@@ -863,7 +863,6 @@ export class DebugImpl implements Debug {
 
   /**
    * Reconstructs the RLP-encoded raw transaction from a Transaction model object.
-   * Handles legacy (type 0), EIP-2930 (type 1), and EIP-1559 (type 2) transactions.
    * Uses ethers.Transaction which handles the EIP-2718 typed transaction envelope automatically.
    *
    * @private

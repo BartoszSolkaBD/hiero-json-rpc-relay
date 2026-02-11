@@ -1526,7 +1526,7 @@ describe('Debug API Test Suite', async function () {
       s: '0x',
       to: '0x0000000000000000000000000000000000000409',
       transactionIndex: '0x0',
-      type: '0x2',
+      type: '0x0',
       v: '0x0',
       value: '0x0',
       maxFeePerGas: '0x0',
@@ -1602,7 +1602,7 @@ describe('Debug API Test Suite', async function () {
         const decoded = ethers.Transaction.from(result);
         expect(decoded.to?.toLowerCase()).to.equal(mockSyntheticTransaction.to.toLowerCase());
         expect(decoded.nonce).to.equal(parseInt(mockSyntheticTransaction.nonce, 16));
-        expect(decoded.type).to.equal(2);
+        expect(decoded.type).to.equal(0);
         expect(decoded.data).to.equal(mockSyntheticTransaction.input);
         expect(decoded.value).to.equal(BigInt(mockSyntheticTransaction.value));
         expect(decoded.maxFeePerGas).to.equal(BigInt(mockSyntheticTransaction.maxFeePerGas));
