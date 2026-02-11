@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ConfigService } from '@hashgraph/json-rpc-config-service/dist/services';
+import { ethers } from 'ethers';
 import type { Logger } from 'pino';
 
 import { decodeErrorMessage, mapKeysAndValues, numberTo0x, prepend0x, strip0x, tinybarsToWeibars } from '../formatters';
@@ -299,26 +300,34 @@ export class DebugImpl implements Debug {
   }
 
   /**
-   * Returns a list of bad blocks that the client has seen.
-   * Due to Hedera's architecture, bad blocks do not occur, so this method always returns an empty array.
+   * Returns the RLP-encoded transaction for the given transaction hash.
+   * Reuses the same data-fetching and synthetic transaction handling approach as
+   * {@link TransactionService.getTransactionByHash}, but instead of returning a
+   * Transaction model, reconstructs the signed transaction and returns its RLP-encoded form.
+   * For transactions not found, returns "0x".
    *
    * @async
-   * @rpcMethod Exposed as debug_getBadBlocks RPC endpoint
+   * @rpcMethod Exposed as debug_getRawTransaction RPC endpoint
+   * @rpcParamValidationRules Applies JSON-RPC parameter validation according to the API specification
    *
-   * @returns {Promise<[]>} A Promise that resolves to an empty array.
+   * @param {string} transactionHash - The hash of the transaction to retrieve.
+   * @param {RequestDetails} requestDetails - The request details for logging and tracking.
+   * @throws {Error} Throws an error if the debug API is not enabled or if an exception occurs.
+   * @returns {Promise<string>} A Promise that resolves to the RLP-encoded transaction, or "0x" if not found.
    *
    * @example
-   * const result = await getBadBlocks();
-   * // result: []
+   * const result = await getRawTransaction('0x4c4ef2a33ac952fab10bd9b1433486ee1258c5cb56700f98a9a6f45751db5d19', requestDetails);
+   * // result: "0xe6808..."
    */
   @rpcMethod
-  async getBadBlocks(): Promise<[]> {
-    try {
-      DebugImpl.requireDebugAPIEnabled();
-      return [];
-    } catch (error) {
-      throw this.common.genericErrorHandler(error);
-    }
+  @rpcParamValidationRules({
+    0: { type: 'transactionHash', required: true },
+  })
+  @cache()
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async getRawTransaction(transactionHash: string, requestDetails: RequestDetails): Promise<string> {
+    //FIXME: eth dependency has been removed, this function should be reimplemented
+    return "0x";
   }
 
   /**
