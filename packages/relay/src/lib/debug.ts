@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ConfigService } from '@hashgraph/json-rpc-config-service/dist/services';
+import { ethers } from 'ethers';
 import type { Logger } from 'pino';
 
 import { decodeErrorMessage, mapKeysAndValues, numberTo0x, prepend0x, strip0x, tinybarsToWeibars } from '../formatters';
-import { type Debug } from '../index';
+import { type Debug, Eth } from '../index';
 import { MirrorNodeClient } from './clients';
 import type { ICacheClient } from './clients/cache/ICacheClient';
 import { IOpcode } from './clients/models/IOpcode';
@@ -12,6 +13,7 @@ import { IOpcodesResponse } from './clients/models/IOpcodesResponse';
 import constants, { CallType, TracerType } from './constants';
 import { cache, RPC_LAYOUT, rpcMethod, rpcParamLayoutConfig } from './decorators';
 import { predefined } from './errors/JsonRpcError';
+import { Transaction, Transaction1559, Transaction2930 } from './model';
 import { CommonService } from './services';
 import {
   BlockTracerConfig,
@@ -64,18 +66,26 @@ export class DebugImpl implements Debug {
   private readonly cacheService: ICacheClient;
 
   /**
+   * The Eth service for interacting with the Ethereum network.
+   * @private
+   */
+  private readonly eth: Eth;
+
+  /**
    * Creates an instance of DebugImpl.
    *
    * @constructor
    * @param {MirrorNodeClient} mirrorNodeClient - The client for interacting with the mirror node.
    * @param {Logger} logger - The logger used for logging output from this class.
    * @param {ICacheClient} cacheService - Service for managing cached data.
+   * @param {Eth} eth - The Eth service for interacting with the Ethereum network.
    */
-  constructor(mirrorNodeClient: MirrorNodeClient, logger: Logger, cacheService: ICacheClient) {
+  constructor(mirrorNodeClient: MirrorNodeClient, logger: Logger, cacheService: ICacheClient, eth: Eth) {
     this.logger = logger;
     this.common = new CommonService(mirrorNodeClient, logger, cacheService);
     this.mirrorNodeClient = mirrorNodeClient;
     this.cacheService = cacheService;
+    this.eth = eth;
   }
 
   /**
@@ -265,6 +275,44 @@ export class DebugImpl implements Debug {
     try {
       DebugImpl.requireDebugAPIEnabled();
       return [];
+    } catch (error) {
+      throw this.common.genericErrorHandler(error);
+    }
+  }
+
+  /**
+   * Returns the RLP-encoded transaction for the given transaction hash.
+   * Reuses the same data-fetching and synthetic transaction handling approach as
+   * {@link TransactionService.getTransactionByHash}, but instead of returning a
+   * Transaction model, reconstructs the signed transaction and returns its RLP-encoded form.
+   * For transactions not found, returns "0x".
+   *
+   * @async
+   * @rpcMethod Exposed as debug_getRawTransaction RPC endpoint
+   * @rpcParamValidationRules Applies JSON-RPC parameter validation according to the API specification
+   *
+   * @param {string} transactionHash - The hash of the transaction to retrieve.
+   * @param {RequestDetails} requestDetails - The request details for logging and tracking.
+   * @throws {Error} Throws an error if the debug API is not enabled or if an exception occurs.
+   * @returns {Promise<string>} A Promise that resolves to the RLP-encoded transaction, or "0x" if not found.
+   *
+   * @example
+   * const result = await getRawTransaction('0x4c4ef2a33ac952fab10bd9b1433486ee1258c5cb56700f98a9a6f45751db5d19', requestDetails);
+   * // result: "0xe6808..."
+   */
+  @rpcMethod
+  @rpcParamValidationRules({
+    0: { type: 'transactionHash', required: true },
+  })
+  @cache()
+  async getRawTransaction(transactionHash: string, requestDetails: RequestDetails): Promise<string> {
+    try {
+      DebugImpl.requireDebugAPIEnabled();
+      const tx = await this.eth.getTransactionByHash(transactionHash, requestDetails);
+      if (!tx) {
+        return '0x';
+      }
+      return this.rlpEncode(tx);
     } catch (error) {
       throw this.common.genericErrorHandler(error);
     }
@@ -811,5 +859,48 @@ export class DebugImpl implements Debug {
         };
       }
     }
+  }
+
+  /**
+   * Reconstructs the RLP-encoded raw transaction from a Transaction model object.
+   * Handles legacy (type 0), EIP-2930 (type 1), and EIP-1559 (type 2) transactions.
+   * Uses ethers.Transaction which handles the EIP-2718 typed transaction envelope automatically.
+   *
+   * @private
+   * @param {Transaction} tx - The transaction model object from eth_getTransactionByHash.
+   * @returns {string} The RLP-encoded raw transaction as a hex string.
+   */
+  private rlpEncode(tx: Transaction): string {
+    const ethersTx = new ethers.Transaction();
+
+    const txType = parseInt(tx.type, 16);
+    ethersTx.type = txType;
+    ethersTx.to = tx.to;
+    ethersTx.nonce = parseInt(tx.nonce, 16);
+    ethersTx.gasLimit = BigInt(tx.gas);
+    ethersTx.data = tx.input;
+    ethersTx.value = BigInt(tx.value);
+    ethersTx.chainId = tx.chainId ? BigInt(tx.chainId) : BigInt(0);
+
+    if (txType === 2) {
+      const tx1559 = tx as Transaction1559;
+      ethersTx.maxFeePerGas = BigInt(tx1559.maxFeePerGas);
+      ethersTx.maxPriorityFeePerGas = BigInt(tx1559.maxPriorityFeePerGas);
+    } else {
+      ethersTx.gasPrice = BigInt(tx.gasPrice);
+    }
+
+    if (txType === 1 || txType === 2) {
+      const tx2930 = tx as Transaction2930;
+      ethersTx.accessList = tx2930.accessList ?? [];
+    }
+
+    // Set signature - pad empty/zero values for synthetic transactions
+    const r = tx.r === '0x' || tx.r === '0x0' ? constants.ZERO_HEX_32_BYTE : tx.r;
+    const s = tx.s === '0x' || tx.s === '0x0' ? constants.ZERO_HEX_32_BYTE : tx.s;
+    const v = parseInt(tx.v ?? '0x0', 16);
+    ethersTx.signature = ethers.Signature.from({ r, s, v });
+
+    return ethersTx.serialized;
   }
 }

@@ -32,6 +32,8 @@ export interface Debug {
   ): Promise<any>;
 
   getBadBlocks(): Promise<[]>;
+
+  getRawTransaction(transactionHash: string, requestDetails: RequestDetails): Promise<string>;
 }
 
 export interface Web3 {
