@@ -31,7 +31,6 @@ export const NOT_IMPLEMENTED_METHODS = [
   'debug_getRawBlock',
   'debug_getRawHeader',
   'debug_getRawReceipts',
-  'debug_getRawTransaction',
 ];
 
 export const SKIPPED_METHODS = [...UNSUPPORTED_METHODS, ...NOT_IMPLEMENTED_METHODS];
