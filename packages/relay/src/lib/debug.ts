@@ -342,22 +342,33 @@ export class DebugImpl implements Debug {
   }
 
   /**
-   * Returns a list of bad blocks that the client has seen.
-   * Due to Hedera's architecture, bad blocks do not occur, so this method always returns an empty array.
+   * Returns an array of EIP-2718 binary-encoded receipts.
    *
    * @async
-   * @rpcMethod Exposed as debug_getBadBlocks RPC endpoint
+   * @rpcMethod Exposed as debug_getRawReceipts RPC endpoint
+   * @rpcParamValidationRules Applies JSON-RPC parameter validation according to the API specification
    *
-   * @returns {Promise<[]>} A Promise that resolves to an empty array.
+   * @param {string} blockNumber - The number of the block to retrieve.
+   * @param {RequestDetails} requestDetails - The request details for logging and tracking.
+   * @throws {Error} Throws an error if the debug API is not enabled or if an exception occurs.
+   * @returns {Promise<string[] | null>} A Promise that resolves to an array of EIP-2718 binary-encoded receipts or null if block not found.
    *
    * @example
-   * const result = await getBadBlocks();
-   * // result: []
+   * const result = await getRawReceipts('0x1234', requestDetails);
+   * // result: ["0xe6808...", "0xe6809..."]
    */
   @rpcMethod
-  async getBadBlocks(): Promise<[]> {
+  @rpcParamValidationRules({
+    0: { type: 'blockNumber', required: true },
+  })
+  @cache()
+  async getRawReceipts(blockNumber: string, requestDetails: RequestDetails): Promise<string[] | null> {
     DebugImpl.requireDebugAPIEnabled();
-    return [];
+    const receipts = await this.eth.getBlockReceipts(blockNumber, requestDetails);
+    if (!receipts) {
+      return null;
+    }
+    return receipts.map((receipt) => encodeReceiptToHex(receipt));
   }
 
   /**
