@@ -12,7 +12,7 @@ import type { ITransactionReceipt } from '../../src/lib/types';
 export type DecodedLog = [Uint8Array, Uint8Array[], Uint8Array];
 export type DecodedReceipt = [Uint8Array, Uint8Array, Uint8Array, DecodedLog[]];
 
-function decodeEncodedReceipt(encoded: string) {
+function /*  */ decodeEncodedReceipt(encoded: string) {
   const bytes = hexToBytes(encoded as `0x${string}`);
 
   const isTyped = bytes.length > 0 && (bytes[0] === 0x01 || bytes[0] === 0x02);
@@ -57,10 +57,10 @@ describe('encodeReceiptToHex', () => {
 
   it('encodes a post-Byzantium success receipt with status=1 and cumulativeGasUsed=0 as RLP-empty (0x80)', () => {
     const receipt: ITransactionReceipt = {
-      blockHash: '0x...',
+      blockHash: '0x8af70e7f281dd721a9fa61d9437a5f1b0ca0cb449ef65be98a70b7cbac2ef40e',
       blockNumber: '0x1',
-      from: '0x1111111111111111111111111111111111111111',
-      to: '0x2222222222222222222222222222222222222222',
+      from: '0xc37f417fa09933335240fca72dd257bfbde9c275',
+      to: '0x637a6a8e5a69c087c24983b05261f63f64ed7e9b',
       cumulativeGasUsed: '0x0',
       gasUsed: '0x0',
       contractAddress: '0x3333333333333333333333333333333333333333',
@@ -68,7 +68,7 @@ describe('encodeReceiptToHex', () => {
       logsBloom: '0x' + '00'.repeat(256),
       root: '0x',
       status: constants.ONE_HEX,
-      transactionHash: '0x...',
+      transactionHash: '0xe494b1bb298216f2f6c97b3aa04be60e456c5e8d401e041e6da371c06bcad1d2',
       transactionIndex: '0x0',
       effectiveGasPrice: '0x1',
       type: '0x0',
@@ -86,11 +86,41 @@ describe('encodeReceiptToHex', () => {
     expect(cumulativeGasUsed.length).to.equal(0);
   });
 
+  it('encodes a post-Byzantium receipt cumulativeGasUsed=0x0001', () => {
+    const receipt: ITransactionReceipt = {
+      blockHash: '0x8af70e7f281dd721a9fa61d9437a5f1b0ca0cb449ef65be98a70b7cbac2ef40e',
+      blockNumber: '0x1',
+      from: '0xc37f417fa09933335240fca72dd257bfbde9c275',
+      to: '0x637a6a8e5a69c087c24983b05261f63f64ed7e9b',
+      cumulativeGasUsed: '0x0001',
+      gasUsed: '0x0',
+      contractAddress: '0x3333333333333333333333333333333333333333',
+      logs: [],
+      logsBloom: '0x' + '00'.repeat(256),
+      root: '0x',
+      status: constants.ONE_HEX,
+      transactionHash: '0xe494b1bb298216f2f6c97b3aa04be60e456c5e8d401e041e6da371c06bcad1d2',
+      transactionIndex: '0x0',
+      effectiveGasPrice: '0x1',
+      type: '0x0',
+    };
+
+    const encoded = encodeReceiptToHex(receipt);
+    const { cumulativeGasUsed } = decodeEncodedReceipt(encoded);
+
+    const decodedHex = prepend0x(toHexString(cumulativeGasUsed));
+    expect(BigInt(decodedHex)).to.equal(BigInt(receipt.cumulativeGasUsed));
+    expect(cumulativeGasUsed.length).to.be.greaterThan(0);
+    expect(cumulativeGasUsed[0]).to.not.equal(0x00);
+    expect(BigInt(decodedHex)).to.equal(1n);
+  });
+
   it('encodes logs as [address, topics[], data] per Yellow Paper', () => {
     const receipt = {
+      blockHash: '0x8af70e7f281dd721a9fa61d9437a5f1b0ca0cb449ef65be98a70b7cbac2ef40e',
       blockNumber: '0x1',
-      from: '0x1111111111111111111111111111111111111111',
-      to: '0x2222222222222222222222222222222222222222',
+      from: '0xc37f417fa09933335240fca72dd257bfbde9c275',
+      to: '0x637a6a8e5a69c087c24983b05261f63f64ed7e9b',
       cumulativeGasUsed: '0x10',
       logsBloom: '0x' + '00'.repeat(256),
       root: '0x',
@@ -104,11 +134,11 @@ describe('encodeReceiptToHex', () => {
             '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
             '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
           ],
-          data: '0x1234',
-          blockHash: '0x...',
+          data: '0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002e6',
+          blockHash: '0x8af70e7f281dd721a9fa61d9437a5f1b0ca0cb449ef65be98a70b7cbac2ef40e',
           blockNumber: '0x1',
           blockTimestamp: '0x1',
-          transactionHash: '0x...',
+          transactionHash: '0xe494b1bb298216f2f6c97b3aa04be60e456c5e8d401e041e6da371c06bcad1d2',
           transactionIndex: '0x0',
           logIndex: '0x0',
           removed: false,
@@ -132,10 +162,10 @@ describe('encodeReceiptToHex', () => {
 
   it('adds EIP-2718 type byte for typed (e.g. type 0x2) receipts', () => {
     const receipt: ITransactionReceipt = {
-      blockHash: '0x...',
+      blockHash: '0x8af70e7f281dd721a9fa61d9437a5f1b0ca0cb449ef65be98a70b7cbac2ef40e',
       blockNumber: '0x1',
-      from: '0x1111111111111111111111111111111111111111',
-      to: '0x2222222222222222222222222222222222222222',
+      from: '0xc37f417fa09933335240fca72dd257bfbde9c275',
+      to: '0x637a6a8e5a69c087c24983b05261f63f64ed7e9b',
       cumulativeGasUsed: '0x10',
       gasUsed: '0x10',
       contractAddress: '0x3333333333333333333333333333333333333333',
@@ -143,7 +173,7 @@ describe('encodeReceiptToHex', () => {
       logsBloom: '0x' + '00'.repeat(256),
       root: '0x',
       status: constants.ONE_HEX,
-      transactionHash: '0x...',
+      transactionHash: '0xe494b1bb298216f2f6c97b3aa04be60e456c5e8d401e041e6da371c06bcad1d2',
       transactionIndex: '0x0',
       effectiveGasPrice: '0x1',
       type: '0x2',
@@ -161,8 +191,8 @@ describe('encodeReceiptToHex', () => {
     const receipt: ITransactionReceipt = {
       blockHash: '0x8af70e7f281dd721a9fa61d9437a5f1b0ca0cb449ef65be98a70b7cbac2ef40e',
       blockNumber: '0x1',
-      from: '0x1111111111111111111111111111111111111111',
-      to: '0x2222222222222222222222222222222222222222',
+      from: '0xc37f417fa09933335240fca72dd257bfbde9c275',
+      to: '0x637a6a8e5a69c087c24983b05261f63f64ed7e9b',
       cumulativeGasUsed: '0x1234',
       gasUsed: '0x1234',
       contractAddress: '0x3333333333333333333333333333333333333333',
@@ -170,7 +200,7 @@ describe('encodeReceiptToHex', () => {
       logsBloom: '0x' + '00'.repeat(256),
       root: '0x',
       status: '0x0',
-      transactionHash: '0x...',
+      transactionHash: '0xe494b1bb298216f2f6c97b3aa04be60e456c5e8d401e041e6da371c06bcad1d2',
       transactionIndex: '0x0',
       effectiveGasPrice: '0x1',
       type: '0x0',
@@ -187,8 +217,8 @@ describe('encodeReceiptToHex', () => {
     const receipt: ITransactionReceipt = {
       blockHash: '0x8af70e7f281dd721a9fa61d9437a5f1b0ca0cb449ef65be98a70b7cbac2ef40e',
       blockNumber: '0x1',
-      from: '0x1111111111111111111111111111111111111111',
-      to: '0x2222222222222222222222222222222222222222',
+      from: '0xc37f417fa09933335240fca72dd257bfbde9c275',
+      to: '0x637a6a8e5a69c087c24983b05261f63f64ed7e9b',
       cumulativeGasUsed: '0x10',
       gasUsed: '0x10',
       contractAddress: '0x3333333333333333333333333333333333333333',
@@ -196,7 +226,7 @@ describe('encodeReceiptToHex', () => {
       logsBloom: '0x' + '00'.repeat(256),
       root: '0x',
       status: constants.ONE_HEX,
-      transactionHash: '0x...',
+      transactionHash: '0xe494b1bb298216f2f6c97b3aa04be60e456c5e8d401e041e6da371c06bcad1d2',
       transactionIndex: '0x0',
       effectiveGasPrice: '0x1',
       type: null,
