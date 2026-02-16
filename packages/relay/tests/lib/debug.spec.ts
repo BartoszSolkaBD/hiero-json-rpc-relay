@@ -2195,7 +2195,7 @@ describe('Debug API Test Suite', async function () {
       });
 
       it('should return an array of EIP-2718 binary-encoded receipts for a block with multiple receipts', async function () {
-        //based on block 0x56e7e72
+        //based on block 0x56e7e72 from Hedera Mainnet
         const receipts: ITransactionReceipt[] = [
           {
             blockHash: '0xb0bc63aabf756e74f5882516c6086e95f6faebe959c255837e857fe1e0b58159',
@@ -2345,7 +2345,7 @@ describe('Debug API Test Suite', async function () {
       });
 
       it('should return an single-element array of EIP-2718 binary-encoded receipts for a block with a single receipt', async function () {
-        //based on block 0x56e86ab - receipt containing logs
+        //based on block 0x56e86ab from Hedera Mainnet - receipt containing logs
         const receipt: ITransactionReceipt = {
           blockHash: '0x8af70e7f281dd721a9fa61d9437a5f1b0ca0cb449ef65be98a70b7cbac2ef40e',
           blockNumber: '0x56e86ab',
