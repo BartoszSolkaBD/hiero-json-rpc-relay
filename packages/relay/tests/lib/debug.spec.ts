@@ -11,7 +11,7 @@ import { register, Registry } from 'prom-client';
 import sinon from 'sinon';
 
 import { Eth, predefined } from '../../src';
-import { prepend0x, strip0x } from '../../src/formatters';
+import { prepend0x, strip0x, toHexString } from '../../src/formatters';
 import { MirrorNodeClient } from '../../src/lib/clients';
 import { IOpcodesResponse } from '../../src/lib/clients/models/IOpcodesResponse';
 import constants, { TracerType } from '../../src/lib/constants';
@@ -2241,14 +2241,107 @@ describe('Debug API Test Suite', async function () {
         expect(result).to.be.an('array').with.lengthOf(2);
 
         // 2) Each element is an EIP-2718 hex-encoded receipt
-        if (result) {
-          result.forEach((encoded, index) => {
-            expect(encoded, `receipt at index ${index}`).to.be.a('string');
-            expect(encoded, `receipt at index ${index} should be 0x-prefixed hex`).to.match(/^0x[0-9a-f]+$/i);
-            expect(encoded.length, `receipt ${index} must have type byte and payload`).to.be.greaterThan(4);
-            assertRawReceiptDecodesToMatchReceipt(encoded, receipts[index]);
-          });
-        }
+        result!.forEach((encoded, index) => {
+          expect(encoded, `receipt at index ${index}`).to.be.a('string');
+          expect(encoded, `receipt at index ${index} should be 0x-prefixed hex`).to.match(/^0x[0-9a-f]+$/i);
+          expect(encoded.length, `receipt ${index} must have type byte and payload`).to.be.greaterThan(4);
+          assertRawReceiptDecodesToMatchReceipt(encoded, receipts[index]);
+        });
+      });
+
+      it('should return raw receipts that match pre-captured debug_getRawReceipts payload for block 0x23592c0 from Monad Quicknode RPC', async function () {
+        const ethGetBlockReceiptsResult: ITransactionReceipt[] = [
+          {
+            type: '0x0',
+            status: '0x1',
+            root: '0x01',
+            cumulativeGasUsed: '0x0',
+            logsBloom:
+              '0x00000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000200000000000000000000000000000000000000000002000000000008000000000000000000000000020000000000000000000000000000000000000010000000000000000000000000000000000004000000000000000000400000000000000000000000000000000000000000000000000004000000010000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000',
+            transactionHash: '0x6ae0bb89e2b7170f243f7e48fe413e46ba26e6d1d24f6bb53746967168474ea3',
+            transactionIndex: '0x0',
+            blockHash: '0x0aae422316a0c19edb48cbb72e26614202a8b56daefb21c3e9920ede19c7670c',
+            blockNumber: '0x23592c0',
+            gasUsed: '0x0',
+            effectiveGasPrice: '0x0',
+            from: '0x6f49a8f621353f12378d0046e7d7e4b9b249dc9e',
+            to: '0x0000000000000000000000000000000000001000',
+            contractAddress: null as unknown as string,
+            logs: [
+              {
+                address: '0x0000000000000000000000000000000000001000',
+                topics: [
+                  '0x3a420a01486b6b28d6ae89c51f5c3bde3e0e74eecbb646a0c481ccba3aae3754',
+                  '0x0000000000000000000000000000000000000000000000000000000000000056',
+                  '0x0000000000000000000000006f49a8f621353f12378d0046e7d7e4b9b249dc9e',
+                ],
+                data: '0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002e6',
+                blockHash: '0x0aae422316a0c19edb48cbb72e26614202a8b56daefb21c3e9920ede19c7670c',
+                blockNumber: '0x23592c0',
+                blockTimestamp: '0x69208301',
+                transactionHash: '0x6ae0bb89e2b7170f243f7e48fe413e46ba26e6d1d24f6bb53746967168474ea3',
+                transactionIndex: '0x0',
+                logIndex: '0x0',
+                removed: false,
+              },
+            ],
+          } as ITransactionReceipt,
+          {
+            type: '0x2',
+            status: '0x1',
+            root: '0x01',
+            cumulativeGasUsed: '0x3a980',
+            logsBloom:
+              '0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000042000000000000000000',
+            transactionHash: '0x92f28ebdf21ba386757b8a17292791ec70edce1dd0828f9202ccead768006e6a',
+            transactionIndex: '0x1',
+            blockHash: '0x0aae422316a0c19edb48cbb72e26614202a8b56daefb21c3e9920ede19c7670c',
+            blockNumber: '0x23592c0',
+            gasUsed: '0x3a980',
+            effectiveGasPrice: '0x17bfac7c00',
+            from: '0x4ea043757f7d2e0b386b26e57633ed97863ff63d',
+            to: '0x368ee51e47a594fe1e9908b48228748a30bc7ca4',
+            contractAddress: null as unknown as string,
+            logs: [
+              {
+                address: '0x368ee51e47a594fe1e9908b48228748a30bc7ca4',
+                topics: ['0xf36866d965ee70c8632ff558f5cf8d41ee9ca1d0d0bc7700786e57be60747390'],
+                data: '0x0000000000000000000000000000000000000000000000000000003fb482bae245544800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000069208301',
+                blockHash: '0x0aae422316a0c19edb48cbb72e26614202a8b56daefb21c3e9920ede19c7670c',
+                blockNumber: '0x23592c0',
+                blockTimestamp: '0x69208301',
+                transactionHash: '0x92f28ebdf21ba386757b8a17292791ec70edce1dd0828f9202ccead768006e6a',
+                transactionIndex: '0x1',
+                logIndex: '0x1',
+                removed: false,
+              },
+              {
+                address: '0x368ee51e47a594fe1e9908b48228748a30bc7ca4',
+                topics: ['0xf36866d965ee70c8632ff558f5cf8d41ee9ca1d0d0bc7700786e57be60747390'],
+                data: '0x000000000000000000000000000000000000000000000000000007a4dfeb5fe242544300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000069208301',
+                blockHash: '0x0aae422316a0c19edb48cbb72e26614202a8b56daefb21c3e9920ede19c7670c',
+                blockNumber: '0x23592c0',
+                blockTimestamp: '0x69208301',
+                transactionHash: '0x92f28ebdf21ba386757b8a17292791ec70edce1dd0828f9202ccead768006e6a',
+                transactionIndex: '0x1',
+                logIndex: '0x2',
+                removed: false,
+              },
+            ],
+          } as ITransactionReceipt,
+        ];
+
+        const expectedRawReceipts = [
+          '0xf901c50180b9010000000000000000000000001000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000200000000000000000000000000000000000000000002000000000008000000000000000000000000020000000000000000000000000000000000000010000000000000000000000000000000000004000000000000000000400000000000000000000000000000000000000000000000000004000000010000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f8bef8bc940000000000000000000000000000000000001000f863a03a420a01486b6b28d6ae89c51f5c3bde3e0e74eecbb646a0c481ccba3aae3754a00000000000000000000000000000000000000000000000000000000000000056a00000000000000000000000006f49a8f621353f12378d0046e7d7e4b9b249dc9eb840000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002e6',
+          '0x02f90241018303a980b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000042000000000000000000f90136f89994368ee51e47a594fe1e9908b48228748a30bc7ca4e1a0f36866d965ee70c8632ff558f5cf8d41ee9ca1d0d0bc7700786e57be60747390b8600000000000000000000000000000000000000000000000000000003fb482bae245544800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000069208301f89994368ee51e47a594fe1e9908b48228748a30bc7ca4e1a0f36866d965ee70c8632ff558f5cf8d41ee9ca1d0d0bc7700786e57be60747390b860000000000000000000000000000000000000000000000000000007a4dfeb5fe242544300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000069208301',
+        ];
+
+        sinon.stub(eth, 'getBlockReceipts').resolves(ethGetBlockReceiptsResult);
+        const result = await debugService.getRawReceipts('0x23592c0', requestDetails);
+
+        expect(result).to.not.be.null;
+        expect(result).to.have.lengthOf(2);
+        expect(result).to.deep.equal(expectedRawReceipts);
       });
 
       it('should return an single-element array of EIP-2718 binary-encoded receipts for a block with a single receipt', async function () {
@@ -2322,9 +2415,7 @@ describe('Debug API Test Suite', async function () {
         sinon.stub(eth, 'getBlockReceipts').resolves([receipt]);
         const result = await debugService.getRawReceipts('0x56e86ab', requestDetails);
         expect(result).to.be.an('array').with.lengthOf(1);
-        if (result) {
-          assertRawReceiptDecodesToMatchReceipt(result[0], receipt);
-        }
+        assertRawReceiptDecodesToMatchReceipt(result![0], receipt);
       });
     });
 
@@ -2363,7 +2454,7 @@ describe('Debug API Test Suite', async function () {
 
       const decoded = RLP.decode(payload) as DecodedReceipt;
 
-      const toHex = (b: Uint8Array) => prepend0x(Buffer.from(b).toString('hex'));
+      const toHex = (b: Uint8Array) => prepend0x(toHexString(b));
 
       // 4-field receipt structure
       expect(decoded).to.be.an('array').with.lengthOf(4);
