@@ -14,7 +14,7 @@
 import { RLP } from '@ethereumjs/rlp';
 import { bytesToInt, concatBytes, hexToBytes, intToBytes } from '@ethereumjs/util';
 
-import { prepend0x } from '../formatters';
+import { prepend0x, toHexString } from '../formatters';
 import constants from './constants';
 import type { ITransactionReceipt } from './types';
 
@@ -25,10 +25,9 @@ function encodeLogsForReceipt(logs: ITransactionReceipt['logs']): [Uint8Array, U
 
 /**
  * Encodes a single receipt to EIP-2718 binary form (hex string).
- * Matches the structure used in blockWorker for receipt trie (Yellow Paper + EIP-2718).
  */
 export function encodeReceiptToHex(receipt: ITransactionReceipt): string {
-  const txType = receipt.type != null ? bytesToInt(hexToBytes(receipt.type)) : 0;
+  const txType = receipt.type !== null ? bytesToInt(hexToBytes(receipt.type)) : 0;
 
   // First field: receipt root or status (post-Byzantium)
   let receiptRootOrStatus: Uint8Array;
@@ -40,16 +39,22 @@ export function encodeReceiptToHex(receipt: ITransactionReceipt): string {
     receiptRootOrStatus = hexToBytes(constants.ONE_HEX);
   }
 
+  const cumulativeGasUsed = receipt.cumulativeGasUsed;
+  const cumulativeGasUsedBytes =
+    cumulativeGasUsed === '0x0' || cumulativeGasUsed === '0x00' || BigInt(cumulativeGasUsed) === BigInt(0)
+      ? new Uint8Array(0)
+      : hexToBytes(cumulativeGasUsed);
+
   const encodedList = RLP.encode([
     receiptRootOrStatus,
-    hexToBytes(receipt.cumulativeGasUsed),
+    cumulativeGasUsedBytes,
     hexToBytes(receipt.logsBloom),
     encodeLogsForReceipt(receipt.logs),
   ]);
 
   if (txType === 0) {
-    return prepend0x(Buffer.from(encodedList).toString('hex'));
+    return prepend0x(toHexString(encodedList));
   }
   const withPrefix = concatBytes(intToBytes(txType), encodedList);
-  return prepend0x(Buffer.from(withPrefix).toString('hex'));
+  return prepend0x(toHexString(withPrefix));
 }
