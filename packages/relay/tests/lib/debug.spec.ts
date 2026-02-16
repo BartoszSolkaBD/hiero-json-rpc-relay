@@ -27,6 +27,8 @@ import { ITransactionReceipt, RequestDetails } from '../../src/lib/types';
 import RelayAssertions from '../assertions';
 import { getQueryParams, withOverriddenEnvsInMochaTest } from '../helpers';
 import { generateEthTestEnv } from './eth/eth-helpers';
+import { DecodedLog, DecodedReceipt } from './receiptSerialization.spec';
+
 chai.use(chaiAsPromised);
 
 const logger = pino({ level: 'silent' });
@@ -2446,12 +2448,6 @@ describe('Debug API Test Suite', async function () {
       const isTyped = bytes.length > 0 && (bytes[0] === 0x01 || bytes[0] === 0x02);
       const payload = isTyped ? bytes.slice(1) : bytes;
 
-      // Per Yellow Paper: each log is RLP([address, topics[], data])
-      type DecodedReceiptLog = [Uint8Array, Uint8Array[], Uint8Array];
-
-      // Per Yellow Paper: receipt is RLP([postState, cumulativeGasUsed, logsBloom, logs])
-      type DecodedReceipt = [Uint8Array, Uint8Array, Uint8Array, DecodedReceiptLog[]];
-
       const decoded = RLP.decode(payload) as DecodedReceipt;
 
       const toHex = (b: Uint8Array) => prepend0x(toHexString(b));
@@ -2471,7 +2467,7 @@ describe('Debug API Test Suite', async function () {
       // Field 3: logs
       expect(decoded[3]).to.be.an('array').with.lengthOf(expectedReceipt.logs.length);
       expectedReceipt.logs.forEach((log, i) => {
-        const [addr, topics, data] = decoded[3][i] as DecodedReceiptLog;
+        const [addr, topics, data] = decoded[3][i] as DecodedLog;
         expect(toHex(addr)).to.equal(log.address);
         expect(topics).to.be.an('array').with.lengthOf(log.topics.length);
         log.topics.forEach((topic, j) => expect(toHex(topics[j])).to.equal(topic));
