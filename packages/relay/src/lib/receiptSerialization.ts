@@ -31,7 +31,7 @@ export function encodeReceiptToHex(receipt: ITransactionReceipt): string {
 
   // First field: receipt root or status (post-Byzantium)
   let receiptRootOrStatus: Uint8Array;
-  if (receipt.root && receipt.root.length >= 2) {
+  if (receipt.root && receipt.root.length > 2) {
     receiptRootOrStatus = hexToBytes(receipt.root);
   } else if (receipt.status && bytesToInt(hexToBytes(receipt.status)) === 0) {
     receiptRootOrStatus = new Uint8Array(0);
@@ -41,9 +41,7 @@ export function encodeReceiptToHex(receipt: ITransactionReceipt): string {
 
   const cumulativeGasUsed = receipt.cumulativeGasUsed;
   const cumulativeGasUsedBytes =
-    cumulativeGasUsed === '0x0' || cumulativeGasUsed === '0x00' || BigInt(cumulativeGasUsed) === BigInt(0)
-      ? new Uint8Array(0)
-      : hexToBytes(cumulativeGasUsed);
+    BigInt(cumulativeGasUsed) === BigInt(0) ? new Uint8Array(0) : hexToBytes(cumulativeGasUsed);
 
   const encodedList = RLP.encode([
     receiptRootOrStatus,
