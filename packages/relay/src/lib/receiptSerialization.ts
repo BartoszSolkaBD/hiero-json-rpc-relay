@@ -41,7 +41,9 @@ export function encodeReceiptToHex(receipt: ITransactionReceipt): string {
 
   const cumulativeGasUsed = receipt.cumulativeGasUsed;
   const cumulativeGasUsedBytes =
-    BigInt(cumulativeGasUsed) === BigInt(0) ? new Uint8Array(0) : hexToBytes(cumulativeGasUsed);
+    BigInt(cumulativeGasUsed) === BigInt(0)
+      ? new Uint8Array(0)
+      : hexToBytes(prepend0x(BigInt(cumulativeGasUsed).toString(16))); // canonical RLP encoding (no leading zeros)
 
   const encodedList = RLP.encode([
     receiptRootOrStatus,
