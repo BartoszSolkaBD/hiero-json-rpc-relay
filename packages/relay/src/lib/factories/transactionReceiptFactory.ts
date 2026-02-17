@@ -23,6 +23,7 @@ interface IRegularTransactionReceiptParams {
   logs: Log[];
   receiptResponse: any;
   to: string | null;
+  blockGasUsedBeforeTransaction: number;
 }
 
 /**
@@ -88,7 +89,7 @@ class TransactionReceiptFactory {
    * @returns {ITransactionReceipt} Transaction receipt for the regular transaction
    */
   public static createRegularReceipt(params: IRegularTransactionReceiptParams): ITransactionReceipt {
-    const { receiptResponse, effectiveGas, from, logs } = params;
+    const { receiptResponse, effectiveGas, from, logs, blockGasUsedBeforeTransaction } = params;
     let { to } = params;
 
     // Determine contract address if it exists
@@ -104,7 +105,7 @@ class TransactionReceiptFactory {
       blockNumber: numberTo0x(receiptResponse.block_number),
       from: from,
       to: to,
-      cumulativeGasUsed: numberTo0x(receiptResponse.block_gas_used),
+      cumulativeGasUsed: numberTo0x(blockGasUsedBeforeTransaction + receiptResponse.gas_used),
       gasUsed: nanOrNumberTo0x(receiptResponse.gas_used),
       contractAddress: contractAddress,
       logs: logs,

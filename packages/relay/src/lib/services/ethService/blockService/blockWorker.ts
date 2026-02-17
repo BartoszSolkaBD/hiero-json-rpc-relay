@@ -132,27 +132,50 @@ function populateSyntheticTransactions(
 }
 
 function buildReceiptRootHashes(txHashes: string[], contractResults: any[], logs: Log[]): IReceiptRootHash[] {
-  const receipts: IReceiptRootHash[] = [];
+  const items: {
+    transactionIndex: number;
+    logsPerTx: Log[];
+    crPerTx: any[];
+  }[] = [];
 
-  for (const i in txHashes) {
-    const txHash: string = txHashes[i];
-    const logsPerTx: Log[] = logs.filter((log) => log.transactionHash == txHash);
-    const crPerTx: any[] = contractResults.filter((cr) => cr.hash == txHash);
+  for (const txHash of txHashes) {
+    const logsPerTx: Log[] = logs.filter((log) => log.transactionHash === txHash);
+    const crPerTx: any[] = contractResults.filter((cr) => cr.hash === txHash);
 
-    let transactionIndex: any = null;
+    // Derive numeric transaction index (for ordering)
+    let txIndexNum: number = -1;
     if (crPerTx.length && crPerTx[0].transaction_index != null) {
-      transactionIndex = intToHex(crPerTx[0].transaction_index);
+      txIndexNum = crPerTx[0].transaction_index;
     } else if (logsPerTx.length) {
-      transactionIndex = logsPerTx[0].transactionIndex;
+      txIndexNum = parseInt(logsPerTx[0].transactionIndex, 16);
     }
 
+    items.push({
+      transactionIndex: txIndexNum,
+      logsPerTx,
+      crPerTx,
+    });
+  }
+
+  // Sort by transaction index = block order
+  items.sort((a, b) => a.transactionIndex - b.transactionIndex);
+
+  const receipts: IReceiptRootHash[] = [];
+  let cumulativeGas = 0;
+
+  for (const item of items) {
+    const { transactionIndex, logsPerTx, crPerTx } = item;
+
+    const gasUsed = crPerTx.length && crPerTx[0].gas_used != null ? crPerTx[0].gas_used : 0;
+    cumulativeGas += gasUsed;
+    const transactionIndexHex = intToHex(transactionIndex);
+
     receipts.push({
-      transactionIndex,
+      transactionIndex: transactionIndexHex,
       type: crPerTx.length && crPerTx[0].type ? intToHex(crPerTx[0].type) : null,
       root: crPerTx.length ? crPerTx[0].root : constants.ZERO_HEX_32_BYTE,
       status: crPerTx.length ? crPerTx[0].status : constants.ONE_HEX,
-      cumulativeGasUsed:
-        crPerTx.length && crPerTx[0].block_gas_used ? intToHex(crPerTx[0].block_gas_used) : constants.ZERO_HEX,
+      cumulativeGasUsed: intToHex(cumulativeGas),
       logsBloom: crPerTx.length
         ? crPerTx[0].bloom
         : LogsBloomUtils.buildLogsBloom(logs[0].address, logsPerTx[0].topics),
@@ -372,7 +395,15 @@ export async function getBlockReceipts(
       logsByHash.set(log.transactionHash, existingLogs);
     }
 
-    const receiptPromises = contractResults.map(async (contractResult) => {
+    // Ensure contract results are processed in transaction_index (block) order
+    const sortedContractResults = [...contractResults].sort((a, b) => {
+      const aIdx = a.transaction_index ?? Number.MAX_SAFE_INTEGER;
+      const bIdx = b.transaction_index ?? Number.MAX_SAFE_INTEGER;
+      return aIdx - bIdx;
+    });
+
+    let blockGasUsedBeforeTransaction = 0;
+    const receiptPromises = sortedContractResults.map(async (contractResult) => {
       if (Utils.isRejectedDueToHederaSpecificValidation(contractResult)) {
         logger.debug(
           `Transaction with hash %s is skipped due to hedera-specific validation failure (%s)`,
@@ -394,12 +425,16 @@ export async function getBlockReceipts(
         logs: contractResult.logs,
         receiptResponse: contractResult,
         to,
+        blockGasUsedBeforeTransaction,
       };
-      return TransactionReceiptFactory.createRegularReceipt(transactionReceiptParams) as ITransactionReceipt;
+
+      const receipt = TransactionReceiptFactory.createRegularReceipt(transactionReceiptParams) as ITransactionReceipt;
+      blockGasUsedBeforeTransaction += contractResult.gas_used;
+      return receipt;
     });
 
     const resolvedReceipts = await Promise.all(receiptPromises);
-    receipts.push(...resolvedReceipts.filter(Boolean));
+    receipts.push(...resolvedReceipts.filter((r): r is ITransactionReceipt => r !== null));
 
     const regularTxHashes = new Set(contractResults.map((result) => result.hash));
 
