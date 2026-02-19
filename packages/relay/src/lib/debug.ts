@@ -351,7 +351,7 @@ export class DebugImpl implements Debug {
    * @param {string} blockHashOrNumber - The block hash or block number.
    * @param {RequestDetails} requestDetails - The request details for logging and tracking.
    * @throws {Error} Throws an error if the debug API is not enabled or if an exception occurs.
-   * @returns {Promise<string[] | null>} A Promise that resolves to an array of EIP-2718 binary-encoded receipts or null if block not found.
+   * @returns {Promise<string[]>} A Promise that resolves to an array of EIP-2718 binary-encoded receipts or empty array if block not found.
    *
    * @example
    * const result = await getRawReceipts('0x1234', requestDetails);
