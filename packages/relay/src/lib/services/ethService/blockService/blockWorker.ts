@@ -143,7 +143,7 @@ function buildReceiptRootHashes(txHashes: string[], contractResults: any[], logs
     const crPerTx: any[] = contractResults.filter((cr) => cr.hash === txHash);
 
     // Derive numeric transaction index (for ordering)
-    let txIndexNum: number = -1;
+    let txIndexNum: number = 0;
     if (crPerTx.length && crPerTx[0].transaction_index != null) {
       txIndexNum = crPerTx[0].transaction_index;
     } else if (logsPerTx.length) {
@@ -166,7 +166,7 @@ function buildReceiptRootHashes(txHashes: string[], contractResults: any[], logs
   for (const item of items) {
     const { transactionIndex, logsPerTx, crPerTx } = item;
 
-    const gasUsed = crPerTx.length && crPerTx[0].gas_used != null ? crPerTx[0].gas_used : 0;
+    const gasUsed = crPerTx[0]?.gas_used ?? 0;
     cumulativeGas += gasUsed;
     const transactionIndexHex = intToHex(transactionIndex);
 
