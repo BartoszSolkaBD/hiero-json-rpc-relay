@@ -35,7 +35,7 @@ export interface Debug {
 
   traceBlockByHash(blockHash: string, tracerObject: BlockTracerConfig, requestDetails: RequestDetails): Promise<any>;
 
-  getRawReceipts(blockHashOrNumber: string, requestDetails: RequestDetails): Promise<string[] | null>;
+  getRawReceipts(blockHashOrNumber: string, requestDetails: RequestDetails): Promise<string[]>;
 }
 
 export interface Web3 {

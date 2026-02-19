@@ -4,7 +4,7 @@ import { ConfigService } from '@hashgraph/json-rpc-config-service/dist/services'
 import type { Logger } from 'pino';
 
 import { decodeErrorMessage, mapKeysAndValues, numberTo0x, prepend0x, strip0x, tinybarsToWeibars } from '../formatters';
-import { type Debug, Eth } from '../index';
+import { type Debug } from '../index';
 import { Utils } from '../utils';
 import { MirrorNodeClient } from './clients';
 import type { ICacheClient } from './clients/cache/ICacheClient';
@@ -13,8 +13,7 @@ import { IOpcodesResponse } from './clients/models/IOpcodesResponse';
 import constants, { CallType, TracerType } from './constants';
 import { cache, RPC_LAYOUT, rpcMethod, rpcParamLayoutConfig } from './decorators';
 import { predefined } from './errors/JsonRpcError';
-import { encodeReceiptToHex } from './receiptSerialization';
-import { CommonService } from './services';
+import { BlockService, CommonService, IBlockService } from './services';
 import {
   BlockTracerConfig,
   CallTracerResult,
@@ -67,10 +66,10 @@ export class DebugImpl implements Debug {
   private readonly cacheService: ICacheClient;
 
   /**
-   * The Eth implementation used for handling Ethereum-specific JSON-RPC requests.
+   * The Block Service implementation that takes care of all block API operations.
    * @private
    */
-  private readonly eth: Eth;
+  private readonly blockService: IBlockService;
 
   /**
    * Creates an instance of DebugImpl.
@@ -79,14 +78,14 @@ export class DebugImpl implements Debug {
    * @param {MirrorNodeClient} mirrorNodeClient - The client for interacting with the mirror node.
    * @param {Logger} logger - The logger used for logging output from this class.
    * @param {ICacheClient} cacheService - Service for managing cached data.
-   * @param {Eth} eth - The Eth implementation used for handling Ethereum-specific JSON-RPC requests.
+   * @param {string} chainId - The chain identifier for the current blockchain environment.
    */
-  constructor(mirrorNodeClient: MirrorNodeClient, logger: Logger, cacheService: ICacheClient, eth: Eth) {
+  constructor(mirrorNodeClient: MirrorNodeClient, logger: Logger, cacheService: ICacheClient, chainId: string) {
     this.logger = logger;
     this.common = new CommonService(mirrorNodeClient, logger, cacheService);
     this.mirrorNodeClient = mirrorNodeClient;
     this.cacheService = cacheService;
-    this.eth = eth;
+    this.blockService = new BlockService(cacheService, chainId, this.common, mirrorNodeClient, logger);
   }
 
   /**
@@ -268,7 +267,7 @@ export class DebugImpl implements Debug {
    * @rpcMethod Exposed as debug_getRawReceipts RPC endpoint
    * @rpcParamValidationRules Applies JSON-RPC parameter validation according to the API specification
    *
-   * @param {string} blockNumber - The number of the block to retrieve.
+   * @param {string} blockHashOrNumber - The block hash or block number.
    * @param {RequestDetails} requestDetails - The request details for logging and tracking.
    * @throws {Error} Throws an error if the debug API is not enabled or if an exception occurs.
    * @returns {Promise<string[] | null>} A Promise that resolves to an array of EIP-2718 binary-encoded receipts or null if block not found.
@@ -279,16 +278,14 @@ export class DebugImpl implements Debug {
    */
   @rpcMethod
   @rpcParamValidationRules({
-    0: { type: 'blockNumber', required: true },
+    0: { type: ['blockNumber', 'blockHash'], required: true },
   })
-  @cache()
-  async getRawReceipts(blockNumber: string, requestDetails: RequestDetails): Promise<string[] | null> {
+  @cache({
+    skipParams: [{ index: '0', value: constants.NON_CACHABLE_BLOCK_PARAMS }],
+  })
+  async getRawReceipts(blockHashOrNumber: string, requestDetails: RequestDetails): Promise<string[]> {
     DebugImpl.requireDebugAPIEnabled();
-    const receipts = await this.eth.getBlockReceipts(blockNumber, requestDetails);
-    if (!receipts) {
-      return null;
-    }
-    return receipts.map((receipt) => encodeReceiptToHex(receipt));
+    return await this.blockService.getRawReceipts(blockHashOrNumber, requestDetails);
   }
 
   /**
