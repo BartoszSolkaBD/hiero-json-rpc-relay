@@ -12,7 +12,7 @@ import type { ITransactionReceipt } from '../../src/lib/types';
 export type DecodedLog = [Uint8Array, Uint8Array[], Uint8Array];
 export type DecodedReceipt = [Uint8Array, Uint8Array, Uint8Array, DecodedLog[]];
 
-function /*  */ decodeEncodedReceipt(encoded: string) {
+function decodeEncodedReceipt(encoded: string) {
   const bytes = hexToBytes(encoded as `0x${string}`);
 
   const isTyped = bytes.length > 0 && (bytes[0] === 0x01 || bytes[0] === 0x02);

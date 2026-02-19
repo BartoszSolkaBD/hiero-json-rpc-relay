@@ -18,10 +18,13 @@ import { RegistryFactory } from '../../../factories/registryFactory';
 import { createTransactionFromContractResult, TransactionFactory } from '../../../factories/transactionFactory';
 import {
   IRegularTransactionReceiptParams,
+  IRegularTransactionReceiptRlpInputParams,
   TransactionReceiptFactory,
 } from '../../../factories/transactionReceiptFactory';
 import { Block, Log, Transaction } from '../../../model';
+import { encodeReceiptToHex } from '../../../receiptSerialization';
 import { IContractResultsParams, ITransactionReceipt, MirrorNodeBlock, RequestDetails } from '../../../types';
+import { IReceiptRlpInput } from '../../../types/IReceiptRlpInput';
 import { WorkersPool } from '../../workersService/WorkersPool';
 import { CommonService } from '../ethCommonService/CommonService';
 
@@ -336,27 +339,10 @@ export async function getBlockReceipts(
   requestDetails: RequestDetails,
 ): Promise<ITransactionReceipt[] | null> {
   try {
-    const block = await commonService.getHistoricalBlockResponse(requestDetails, blockHashOrBlockNumber);
+    const { block, contractResults, logsByHash } = await loadBlockExecutionData(blockHashOrBlockNumber, requestDetails);
+    if (!block) return null;
 
-    if (block == null) {
-      return null;
-    }
-
-    const paramTimestamp: IContractResultsParams = {
-      timestamp: [`lte:${block.timestamp.to}`, `gte:${block.timestamp.from}`],
-    };
-
-    // Calculate slice count based on actual transaction count for optimized parallel log retrieval
-    const calculatedSliceCount = Math.ceil(
-      block.count / ConfigService.get('MIRROR_NODE_TIMESTAMP_SLICING_MAX_LOGS_PER_SLICE'),
-    );
-
-    const [contractResults, logs] = await Promise.all([
-      mirrorNodeClient.getContractResults(requestDetails, paramTimestamp),
-      commonService.getLogsWithParams(null, paramTimestamp, requestDetails, calculatedSliceCount),
-    ]);
-
-    if ((!contractResults || contractResults.length === 0) && logs.length == 0) {
+    if ((!contractResults || contractResults.length === 0) && logsByHash.size === 0) {
       return [];
     }
 
@@ -364,13 +350,6 @@ export async function getBlockReceipts(
     const effectiveGas = numberTo0x(
       await commonService.getGasPriceInWeibars(requestDetails, block.timestamp.from.split('.')[0]),
     );
-
-    const logsByHash = new Map<string, Log[]>();
-    for (const log of logs) {
-      const existingLogs = logsByHash.get(log.transactionHash) || [];
-      existingLogs.push(log);
-      logsByHash.set(log.transactionHash, existingLogs);
-    }
 
     const receiptPromises = contractResults.map(async (contractResult) => {
       if (Utils.isRejectedDueToHederaSpecificValidation(contractResult)) {
@@ -399,7 +378,7 @@ export async function getBlockReceipts(
     });
 
     const resolvedReceipts = await Promise.all(receiptPromises);
-    receipts.push(...resolvedReceipts.filter(Boolean));
+    receipts.push(...resolvedReceipts.filter((r): r is ITransactionReceipt => r !== null));
 
     const regularTxHashes = new Set(contractResults.map((result) => result.hash));
 
@@ -418,6 +397,101 @@ export async function getBlockReceipts(
   } catch (e: unknown) {
     throw WorkersPool.wrapError(e);
   }
+}
+
+export async function getRawReceipts(
+  blockHashOrBlockNumber: string,
+  requestDetails: RequestDetails,
+): Promise<string[]> {
+  try {
+    const { contractResults, logsByHash } = await loadBlockExecutionData(blockHashOrBlockNumber, requestDetails);
+
+    if ((!contractResults || contractResults.length === 0) && logsByHash.size === 0) {
+      return [];
+    }
+
+    const encodedReceipts: string[] = [];
+
+    let blockGasUsedBeforeTransaction = 0;
+    const encodedReceiptPromises = contractResults.map(async (contractResult) => {
+      if (Utils.isRejectedDueToHederaSpecificValidation(contractResult)) {
+        logger.debug(
+          `Transaction with hash %s is skipped due to hedera-specific validation failure (%s)`,
+          contractResult.hash,
+          contractResult.result,
+        );
+        return null;
+      }
+
+      contractResult.logs = logsByHash.get(contractResult.hash) || [];
+
+      const transactionReceiptParams: IRegularTransactionReceiptRlpInputParams = {
+        logs: contractResult.logs,
+        receiptResponse: contractResult,
+        blockGasUsedBeforeTransaction,
+      };
+      const receiptRlpInput = TransactionReceiptFactory.createReceiptRlpInput(
+        transactionReceiptParams,
+      ) as IReceiptRlpInput;
+      blockGasUsedBeforeTransaction += contractResult.gas_used;
+      return encodeReceiptToHex(receiptRlpInput);
+    });
+
+    const resolvedEncodedReceipts = await Promise.all(encodedReceiptPromises);
+    encodedReceipts.push(
+      ...resolvedEncodedReceipts.filter((encodedReceipt): encodedReceipt is string => encodedReceipt !== null),
+    );
+
+    const regularTxHashes = new Set(contractResults.map((result) => result.hash));
+
+    // filtering out the synthetic tx hashes and creating the synthetic receipt
+    for (const [txHash, logGroup] of logsByHash.entries()) {
+      if (!regularTxHashes.has(txHash)) {
+        const syntheticReceiptRlpInput = TransactionReceiptFactory.createSyntheticReceiptRlpInput(logGroup);
+        encodedReceipts.push(encodeReceiptToHex(syntheticReceiptRlpInput));
+      }
+    }
+
+    return encodedReceipts;
+  } catch (e: unknown) {
+    throw WorkersPool.wrapError(e);
+  }
+}
+
+async function loadBlockExecutionData(
+  blockHashOrBlockNumber: string,
+  requestDetails: RequestDetails,
+): Promise<{
+  block: MirrorNodeBlock | null;
+  contractResults: any[];
+  logsByHash: Map<string, Log[]>;
+}> {
+  const block = await commonService.getHistoricalBlockResponse(requestDetails, blockHashOrBlockNumber);
+  if (!block) return { block: null, contractResults: [], logsByHash: new Map() };
+
+  const paramTimestamp: IContractResultsParams = {
+    timestamp: [`lte:${block.timestamp.to}`, `gte:${block.timestamp.from}`],
+  };
+
+  const sliceCount = Math.ceil(block.count / ConfigService.get('MIRROR_NODE_TIMESTAMP_SLICING_MAX_LOGS_PER_SLICE'));
+
+  const [contractResults, logs] = await Promise.all([
+    mirrorNodeClient.getContractResults(requestDetails, paramTimestamp),
+    commonService.getLogsWithParams(null, paramTimestamp, requestDetails, sliceCount),
+  ]);
+
+  const logsByHash = groupLogsByHash(logs);
+  return { block, contractResults, logsByHash };
+}
+
+function groupLogsByHash(logs: Log[]): Map<string, Log[]> {
+  const logsByHash = new Map<string, Log[]>();
+  for (const log of logs) {
+    const existingLogs = logsByHash.get(log.transactionHash) || [];
+    existingLogs.push(log);
+    logsByHash.set(log.transactionHash, existingLogs);
+  }
+  return logsByHash;
 }
 
 // export private methods under __test__ "namespace" but using const

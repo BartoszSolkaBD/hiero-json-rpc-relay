@@ -16,17 +16,33 @@ import { bytesToInt, concatBytes, hexToBytes, intToBytes } from '@ethereumjs/uti
 
 import { prepend0x, toHexString } from '../formatters';
 import constants from './constants';
-import type { ITransactionReceipt } from './types';
+import type { Log } from './model';
+import { IReceiptRlpInput } from './types/IReceiptRlpInput';
 
-// Log shape used for encoding: address, topics[], data (per Yellow Paper log structure)
-function encodeLogsForReceipt(logs: ITransactionReceipt['logs']): [Uint8Array, Uint8Array[], Uint8Array][] {
+/**
+ * Converts receipt logs into the RLP encoded log structure.
+ *
+ * Each log becomes a 3-tuple [address, topics[], data] per the Yellow Paper
+ * (address and data as bytes; topics as array of 32-byte topic hashes).
+ *
+ * @param logs - The logs array from the transaction receipt (see {@link Log}).
+ * @returns Array of [address, topics, data] as Uint8Arrays for RLP encoding.
+ */
+function encodeLogsForReceipt(logs: Log[]): [Uint8Array, Uint8Array[], Uint8Array][] {
   return logs.map((log) => [hexToBytes(log.address), log.topics.map((t) => hexToBytes(t)), hexToBytes(log.data)]);
 }
 
 /**
- * Encodes a single receipt to EIP-2718 binary form (hex string).
+ * Encodes a single transaction receipt to EIP-2718 binary form.
+ *
+ * Produces the RLP-encoded 4-tuple (receipt_root_or_status, cumulative_gas_used,
+ * logs_bloom, logs) per the Ethereum Yellow Paper. For typed transactions (type !== 0),
+ * the output is the single-byte type prefix followed by that RLP payload (EIP-2718).
+ *
+ * @param receipt - The transaction receipt to encode (see {@link ITransactionReceipt}).
+ * @returns Hex string (0x-prefixed) of the encoded receipt, suitable for receipts root hashing.
  */
-export function encodeReceiptToHex(receipt: ITransactionReceipt): string {
+export function encodeReceiptToHex(receipt: IReceiptRlpInput): string {
   const txType = receipt.type !== null ? bytesToInt(hexToBytes(receipt.type)) : 0;
 
   // First field: receipt root or status (post-Byzantium)

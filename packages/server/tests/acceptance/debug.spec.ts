@@ -2,10 +2,13 @@
 
 // External resources
 import { RLP } from '@ethereumjs/rlp';
+import { hexToBytes } from '@ethereumjs/util';
 import { ConfigService } from '@hashgraph/json-rpc-config-service/dist/services';
 import { predefined } from '@hashgraph/json-rpc-relay';
-import { numberTo0x, prepend0x, strip0x } from '@hashgraph/json-rpc-relay/src/formatters';
+import { numberTo0x, prepend0x, strip0x, toHexString } from '@hashgraph/json-rpc-relay/src/formatters';
 import constants, { TracerType } from '@hashgraph/json-rpc-relay/src/lib/constants';
+import { ITransactionReceipt } from '@hashgraph/json-rpc-relay/src/lib/types';
+import { BLOCK_NUMBER_ERROR, HASH_ERROR } from '@hashgraph/json-rpc-relay/src/lib/validators/constants';
 import { TransferTransaction } from '@hashgraph/sdk';
 import chai, { expect } from 'chai';
 import chaiExclude from 'chai-exclude';
@@ -1422,8 +1425,7 @@ describe('@debug API Acceptance Tests', function () {
   });
 
   describe('debug_getRawReceipts', () => {
-    it('should return EIP-2718 binary-encoded receipts for a block with transactions', async function () {
-      // Reuse an existing EVM tx that was created in the global before()
+    it('should return EIP-2718 binary-encoded receipts for a block with a transaction', async function () {
       const transaction = await Utils.buildTransaction(
         relay,
         basicContractAddress,
@@ -1444,6 +1446,20 @@ describe('@debug API Acceptance Tests', function () {
         expect(raw, `receipt at index ${index}`).to.be.a('string');
         expect(raw as string, `receipt at index ${index} should be 0x-prefixed hex`).to.match(/^0x[0-9a-f]+$/i);
       });
+
+      // Find the receipt for the transaction and assert it decodes to match the expected receipt
+      expect(result as string[]).to.satisfy(
+        (arr: string[]) =>
+          arr.some((raw) => {
+            try {
+              assertRawReceiptDecodesToMatchReceipt(raw, receipt);
+              return true;
+            } catch {
+              return false;
+            }
+          }),
+        'block should contain raw receipt for test tx',
+      );
     });
 
     it('should fail with INVALID_PARAMETER when given an invalid block number', async function () {
@@ -1452,9 +1468,54 @@ describe('@debug API Acceptance Tests', function () {
         ['invalidBlockNumber'],
         predefined.INVALID_PARAMETER(
           '0',
-          'Expected 0x prefixed hexadecimal block number, or the string "latest", "earliest" or "pending"',
+          `The value passed is not valid: invalidBlockNumber. ${BLOCK_NUMBER_ERROR} OR Expected ${HASH_ERROR} of a block`,
         ),
       );
     });
+
+    /**
+     * Asserts that a raw EIP-2718 receipt hex string decodes (RLP) to the 4-field receipt
+     * and that the decoded fields match the expected receipt (Yellow Paper structure).
+     */
+    function assertRawReceiptDecodesToMatchReceipt(encodedHex: string, expectedReceipt: ITransactionReceipt): void {
+      expect(encodedHex)
+        .to.be.a('string')
+        .that.matches(/^0x[0-9a-f]+$/i);
+
+      const bytes = hexToBytes(encodedHex as `0x${string}`);
+      const isTyped = bytes.length > 0 && (bytes[0] === 0x01 || bytes[0] === 0x02);
+      const payload = isTyped ? bytes.slice(1) : bytes;
+
+      const decoded = RLP.decode(payload);
+      // 4-field receipt structure
+      expect(decoded).to.be.an('array').with.lengthOf(4);
+
+      // Field 0: root/status
+      const decodedRootHex = prepend0x(toHexString(decoded[0] as Uint8Array));
+      expect(decodedRootHex).to.equal(expectedReceipt.root);
+
+      // Field 1: cumulativeGasUsed (compare numerically to handle any leading-zero differences)
+      const decodedCumulativeGasUsedHex = prepend0x(toHexString(decoded[1] as Uint8Array));
+      expect(BigInt(decodedCumulativeGasUsedHex)).to.equal(BigInt(expectedReceipt.cumulativeGasUsed));
+
+      // Field 2: logsBloom
+      const decodedLogsBloomHex = prepend0x(toHexString(decoded[2] as Uint8Array));
+      expect(decodedLogsBloomHex).to.equal(expectedReceipt.logsBloom);
+
+      // Field 3: logs
+      expect(decoded[3]).to.be.an('array').with.lengthOf(expectedReceipt.logs.length);
+      expectedReceipt.logs.forEach((log, i) => {
+        const [addr, topics, data] = decoded[3][i];
+        const decodedAddrHex = prepend0x(toHexString(addr as Uint8Array));
+        expect(decodedAddrHex).to.equal(log.address);
+        expect(topics).to.be.an('array').with.lengthOf(log.topics.length);
+        log.topics.forEach((topic, j) => {
+          const decodedTopicHex = prepend0x(toHexString(topics[j] as Uint8Array));
+          expect(decodedTopicHex).to.equal(topic);
+        });
+        const decodedDataHex = prepend0x(toHexString(data as Uint8Array));
+        expect(decodedDataHex).to.equal(log.data);
+      });
+    }
   });
 });
