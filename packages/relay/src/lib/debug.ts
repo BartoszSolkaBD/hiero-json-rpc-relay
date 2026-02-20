@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ConfigService } from '@hashgraph/json-rpc-config-service/dist/services';
-import { ethers } from 'ethers';
+import EventEmitter from 'events';
 import type { Logger } from 'pino';
+import { Registry } from 'prom-client';
 
 import { decodeErrorMessage, mapKeysAndValues, numberTo0x, prepend0x, strip0x, tinybarsToWeibars } from '../formatters';
 import { type Debug } from '../index';
@@ -17,7 +18,16 @@ import { cache, RPC_LAYOUT, rpcMethod, rpcParamLayoutConfig } from './decorators
 import { predefined } from './errors/JsonRpcError';
 import { BlockFactory } from './factories/blockFactory';
 import { Block } from './model';
-import { BlockService, CommonService, IBlockService } from './services';
+import {
+  BlockService,
+  CommonService,
+  IBlockService,
+  LockService,
+  TransactionPoolService,
+  TransactionService,
+} from './services';
+import { ITransactionService } from './services/ethService/transactionService/ITransactionService';
+import HAPIService from './services/hapiService/hapiService';
 import {
   BlockTracerConfig,
   CallTracerResult,
@@ -29,6 +39,7 @@ import {
   TraceBlockTxResult,
   TransactionTracerConfig,
   TxHashToContractResultOrActionsMap,
+  TypedEvents,
 } from './types';
 import type { ContractAction, MirrorNodeBlock, MirrorNodeContractResult } from './types/mirrorNode';
 import { rpcParamValidationRules } from './validators';
@@ -76,6 +87,12 @@ export class DebugImpl implements Debug {
   private readonly blockService: IBlockService;
 
   /**
+   * The Transaction Service implementation that handles all transaction-related operations.
+   * @private
+   */
+  private readonly transactionService: ITransactionService;
+
+  /**
    * Creates an instance of DebugImpl.
    *
    * @constructor
@@ -84,12 +101,33 @@ export class DebugImpl implements Debug {
    * @param {ICacheClient} cacheService - Service for managing cached data.
    * @param {string} chainId - The chain identifier for the current blockchain environment.
    */
-  constructor(mirrorNodeClient: MirrorNodeClient, logger: Logger, cacheService: ICacheClient, chainId: string) {
+  constructor(
+    mirrorNodeClient: MirrorNodeClient,
+    logger: Logger,
+    cacheService: ICacheClient,
+    chainId: string,
+    hapiService: HAPIService,
+    transactionPoolService: TransactionPoolService,
+    lockService: LockService,
+    registry: Registry,
+  ) {
     this.logger = logger;
     this.common = new CommonService(mirrorNodeClient, logger, cacheService);
     this.mirrorNodeClient = mirrorNodeClient;
     this.cacheService = cacheService;
     this.blockService = new BlockService(cacheService, chainId, this.common, mirrorNodeClient, logger);
+    this.transactionService = new TransactionService(
+      cacheService,
+      chainId,
+      this.common,
+      new EventEmitter<TypedEvents>(),
+      hapiService,
+      logger,
+      mirrorNodeClient,
+      transactionPoolService,
+      lockService,
+      registry,
+    );
   }
 
   /**
@@ -324,10 +362,17 @@ export class DebugImpl implements Debug {
     0: { type: 'transactionHash', required: true },
   })
   @cache()
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async getRawTransaction(transactionHash: string, requestDetails: RequestDetails): Promise<string> {
-    //FIXME: eth dependency has been removed, this function should be reimplemented
-    return "0x";
+    try {
+      DebugImpl.requireDebugAPIEnabled();
+      const tx = await this.transactionService.getTransactionByHash(transactionHash, requestDetails);
+      if (!tx) {
+        return '0x';
+      }
+      return BlockFactory.rlpEncodeTx(tx);
+    } catch (error) {
+      throw this.common.genericErrorHandler(error);
+    }
   }
 
   /**

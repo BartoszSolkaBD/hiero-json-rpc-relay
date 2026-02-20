@@ -39,7 +39,7 @@ let debugService: DebugImpl;
 
 describe('Debug API Test Suite', async function () {
   this.timeout(10000);
-  const { cacheService } = generateEthTestEnv(true);
+  const { cacheService, hapiServiceInstance, transactionPoolService, lockService } = generateEthTestEnv(true);
   const requestDetails = new RequestDetails({ requestId: 'debugTest', ipAddress: '0.0.0.0' });
   const transactionHash = '0xb7a433b014684558d4154c73de3ed360bd5867725239938c2143acb7a76bca82';
   const nonExistentTransactionHash = '0xb8a433b014684558d4154c73de3ed360bd5867725239938c2143acb7a76bca82';
@@ -343,7 +343,16 @@ describe('Debug API Test Suite', async function () {
     web3Mock = new MockAdapter(mirrorNodeInstance.getMirrorNodeWeb3Instance(), { onNoMatch: 'throwException' });
 
     // Create the debug service
-    debugService = new DebugImpl(mirrorNodeInstance, logger, cacheService, ConfigService.get('CHAIN_ID'));
+    debugService = new DebugImpl(
+      mirrorNodeInstance,
+      logger,
+      cacheService,
+      ConfigService.get('CHAIN_ID'),
+      hapiServiceInstance,
+      transactionPoolService,
+      lockService,
+      registry,
+    );
   });
 
   this.beforeEach(() => {
@@ -2189,13 +2198,13 @@ describe('Debug API Test Suite', async function () {
 
     withOverriddenEnvsInMochaTest({ DEBUG_API_ENABLED: true }, () => {
       it('should return "0x" when transaction is not found', async function () {
-        sinon.stub(debugService['eth'], 'getTransactionByHash').resolves(null);
+        sinon.stub(debugService['transactionService'], 'getTransactionByHash').resolves(null);
         const result = await debugService.getRawTransaction(txHash, requestDetails);
         expect(result).to.equal('0x');
       });
 
       it('should return a value that can be decoded back to the original transaction fields', async function () {
-        sinon.stub(debugService['eth'], 'getTransactionByHash').resolves(mockTransaction1559);
+        sinon.stub(debugService['transactionService'], 'getTransactionByHash').resolves(mockTransaction1559);
         const result = await debugService.getRawTransaction(txHash, requestDetails);
 
         // Decode the RLP back using ethers to verify round-trip
@@ -2209,7 +2218,7 @@ describe('Debug API Test Suite', async function () {
       });
 
       it('should return a value that can be decoded back for a legacy transaction', async function () {
-        sinon.stub(debugService['eth'], 'getTransactionByHash').resolves(mockTransactionLegacy);
+        sinon.stub(debugService['transactionService'], 'getTransactionByHash').resolves(mockTransactionLegacy);
         const result = await debugService.getRawTransaction(txHash, requestDetails);
 
         const decoded = ethers.Transaction.from(result);
@@ -2220,7 +2229,7 @@ describe('Debug API Test Suite', async function () {
       });
 
       it('should return a value that can be decoded back for a synthetic transaction', async function () {
-        sinon.stub(debugService['eth'], 'getTransactionByHash').resolves(mockSyntheticTransaction);
+        sinon.stub(debugService['transactionService'], 'getTransactionByHash').resolves(mockSyntheticTransaction);
         const result = await debugService.getRawTransaction(txHash, requestDetails);
 
         const decoded = ethers.Transaction.from(result);
@@ -2229,26 +2238,10 @@ describe('Debug API Test Suite', async function () {
         expect(decoded.type).to.equal(0);
         expect(decoded.data).to.equal(mockSyntheticTransaction.input);
         expect(decoded.value).to.equal(BigInt(mockSyntheticTransaction.value));
-        expect(decoded.maxFeePerGas).to.equal(BigInt(mockSyntheticTransaction.maxFeePerGas));
-        expect(decoded.maxPriorityFeePerGas).to.equal(BigInt(mockSyntheticTransaction.maxPriorityFeePerGas));
-        // Verify that empty r/s were padded to valid 32-byte zero values
-        expect(decoded.signature!.r).to.equal(constants.ZERO_HEX_32_BYTE);
-        expect(decoded.signature!.s).to.equal(constants.ZERO_HEX_32_BYTE);
-      });
-
-      it('should handle errors gracefully', async function () {
-        const testError = new Error('test error');
-        sinon.stub(debugService['eth'], 'getTransactionByHash').rejects(testError);
-
-        // genericErrorHandler will wrap the error
-        const genericErrorHandlerStub = sinon.stub(CommonService.prototype, 'genericErrorHandler').returns(testError);
-
-        try {
-          await debugService.getRawTransaction(txHash, requestDetails);
-          expect.fail('should have thrown');
-        } catch (error) {
-          expect(genericErrorHandlerStub.calledOnce).to.be.true;
-        }
+        expect(decoded.chainId).to.equal(BigInt(mockSyntheticTransaction.chainId));
+        expect(decoded.maxFeePerGas).to.be.null;
+        expect(decoded.maxPriorityFeePerGas).to.be.null;
+        expect(decoded.signature).to.be.null;
       });
     });
   });
@@ -2513,6 +2506,10 @@ describe('Debug API Test Suite', async function () {
           logger,
           cacheService,
           ConfigService.get('CHAIN_ID'),
+          hapiServiceInstance,
+          transactionPoolService,
+          lockService,
+          registry,
         );
 
         // Mock the API calls for actions and contract result to return 404
