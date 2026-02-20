@@ -5,6 +5,7 @@ import type { Logger } from 'pino';
 
 import { decodeErrorMessage, mapKeysAndValues, numberTo0x, prepend0x, strip0x, tinybarsToWeibars } from '../formatters';
 import { type Debug } from '../index';
+import { JsonRpcError } from '../index';
 import { Utils } from '../utils';
 import { MirrorNodeClient } from './clients';
 import type { ICacheClient } from './clients/cache/ICacheClient';
@@ -13,7 +14,9 @@ import { IOpcodesResponse } from './clients/models/IOpcodesResponse';
 import constants, { CallType, TracerType } from './constants';
 import { cache, RPC_LAYOUT, rpcMethod, rpcParamLayoutConfig } from './decorators';
 import { predefined } from './errors/JsonRpcError';
-import { CommonService } from './services';
+import { BlockFactory } from './factories/blockFactory';
+import { Block } from './model';
+import { BlockService, CommonService, IBlockService } from './services';
 import {
   BlockTracerConfig,
   CallTracerResult,
@@ -22,7 +25,7 @@ import {
   IOpcodeLoggerConfig,
   OpcodeLoggerResult,
   RequestDetails,
-  TraceBlockByNumberTxResult,
+  TraceBlockTxResult,
   TransactionTracerConfig,
   TxHashToContractResultOrActionsMap,
 } from './types';
@@ -38,6 +41,7 @@ import { rpcParamValidationRules } from './validators';
 export class DebugImpl implements Debug {
   static debugTraceTransaction = 'debug_traceTransaction';
   static traceBlockByNumber = 'debug_traceBlockByNumber';
+  static traceBlockByHash = 'debug_traceBlockByHash';
   static zeroHex = '0x0';
 
   /**
@@ -65,18 +69,26 @@ export class DebugImpl implements Debug {
   private readonly cacheService: ICacheClient;
 
   /**
+   * The Block Service implementation that takes care of all block API operations.
+   * @private
+   */
+  private readonly blockService: IBlockService;
+
+  /**
    * Creates an instance of DebugImpl.
    *
    * @constructor
    * @param {MirrorNodeClient} mirrorNodeClient - The client for interacting with the mirror node.
    * @param {Logger} logger - The logger used for logging output from this class.
    * @param {ICacheClient} cacheService - Service for managing cached data.
+   * @param {string} chainId - The chain identifier for the current blockchain environment.
    */
-  constructor(mirrorNodeClient: MirrorNodeClient, logger: Logger, cacheService: ICacheClient) {
+  constructor(mirrorNodeClient: MirrorNodeClient, logger: Logger, cacheService: ICacheClient, chainId: string) {
     this.logger = logger;
     this.common = new CommonService(mirrorNodeClient, logger, cacheService);
     this.mirrorNodeClient = mirrorNodeClient;
     this.cacheService = cacheService;
+    this.blockService = new BlockService(cacheService, chainId, this.common, mirrorNodeClient, logger);
   }
 
   /**
@@ -87,6 +99,41 @@ export class DebugImpl implements Debug {
     if (!ConfigService.get('DEBUG_API_ENABLED')) {
       throw predefined.UNSUPPORTED_METHOD;
     }
+  }
+
+  /**
+   * Get a raw block for debugging purposes.
+   *
+   * @async
+   * @rpcMethod Exposed as debug_getRawBlock RPC endpoint
+   * @rpcParamValidationRules Applies JSON-RPC parameter validation according to the API specification
+   *
+   * @param {string} blockNrOrHash - The block number, tag or hash. Possible values are 'earliest', 'pending', 'latest', hex block number or 32 bytes hash.
+   * @param {RequestDetails} requestDetails - Request details for logging and tracking
+   *
+   * @example
+   * const result = await getRawBlock('0x160c', requestDetails);
+   */
+  @rpcMethod
+  @rpcParamValidationRules({
+    0: { type: ['blockNumber', 'blockHash'], required: true },
+  })
+  @cache({
+    skipParams: [{ index: '0', value: constants.NON_CACHABLE_BLOCK_PARAMS }],
+  })
+  async getRawBlock(blockNrOrHash: string, requestDetails: RequestDetails): Promise<string | JsonRpcError> {
+    DebugImpl.requireDebugAPIEnabled();
+
+    const block: Block | null =
+      blockNrOrHash.length === 66
+        ? await this.blockService.getBlockByHash(blockNrOrHash, true, requestDetails)
+        : await this.blockService.getBlockByNumber(blockNrOrHash, true, requestDetails);
+
+    if (!block) {
+      return constants.EMPTY_HEX;
+    }
+
+    return constants.EMPTY_HEX + Buffer.from(BlockFactory.rlpEncode(block)).toString('hex');
   }
 
   /**
@@ -197,61 +244,39 @@ export class DebugImpl implements Debug {
     blockNumber: string,
     tracerObject: BlockTracerConfig,
     requestDetails: RequestDetails,
-  ): Promise<TraceBlockByNumberTxResult[]> {
-    try {
-      DebugImpl.requireDebugAPIEnabled();
-      const blockResponse = await this.common.getHistoricalBlockResponse(requestDetails, blockNumber, true);
+  ): Promise<TraceBlockTxResult[]> {
+    return this.traceBlock(blockNumber, tracerObject, requestDetails, false);
+  }
 
-      if (blockResponse == null) throw predefined.RESOURCE_NOT_FOUND(`Block ${blockNumber} not found`);
-
-      // Get ALL transaction hashes (EVM + synthetic) along with pre-fetched data
-      const { transactionHashes, preFetchedData } = await this.getBlockTransactionDetails(
-        blockResponse,
-        requestDetails,
-      );
-
-      if (transactionHashes.length === 0) {
-        return [];
-      }
-
-      const tracer = tracerObject?.tracer ?? TracerType.CallTracer;
-      const onlyTopCall = tracerObject?.tracerConfig?.onlyTopCall;
-
-      // Trace all transactions using existing tracer methods with pre-fetched data
-      if (tracer === TracerType.CallTracer) {
-        return await Promise.all(
-          transactionHashes.map(async (txHash) => ({
-            txHash,
-            result: await this.callTracer(
-              txHash,
-              { onlyTopCall },
-              requestDetails,
-              preFetchedData[txHash]?.contractResult,
-              preFetchedData[txHash]?.actions,
-            ),
-          })),
-        );
-      }
-
-      if (tracer === TracerType.PrestateTracer) {
-        return await Promise.all(
-          transactionHashes.map(async (txHash) => ({
-            txHash,
-            result: await this.prestateTracer(
-              txHash,
-              onlyTopCall,
-              requestDetails,
-              preFetchedData[txHash]?.actions,
-              preFetchedData[txHash]?.contractResult,
-            ),
-          })),
-        );
-      }
-
-      return [];
-    } catch (error) {
-      throw this.common.genericErrorHandler(error);
-    }
+  /**
+   * Trace a block by its hash for debugging purposes.
+   *
+   * @async
+   * @rpcMethod Exposed as debug_traceBlockByHash RPC endpoint
+   * @rpcParamValidationRules Applies JSON-RPC parameter validation according to the API specification
+   *
+   * @param {string} blockHash - The block hash to be traced (32-byte hex string).
+   * @param {BlockTracerConfig} tracerObject - The configuration wrapper containing tracer type and config.
+   * @param {RequestDetails} requestDetails - The request details for logging and tracking.
+   * @throws {Error} Throws an error if the debug API is not enabled or if an exception occurs during the trace.
+   * @returns {Promise<any>} A Promise that resolves to the result of the block trace operation.
+   *
+   * @example
+   * const result = await traceBlockByHash('0x1234...', { tracer: TracerType.CallTracer, tracerConfig: { onlyTopCall: false } }, requestDetails);
+   */
+  @rpcMethod
+  @rpcParamValidationRules({
+    0: { type: 'blockHash', required: true },
+    1: { type: 'tracerConfigWrapper', required: false },
+  })
+  @rpcParamLayoutConfig(RPC_LAYOUT.custom((params) => [params[0], params[1]]))
+  @cache()
+  async traceBlockByHash(
+    blockHash: string,
+    tracerObject: BlockTracerConfig,
+    requestDetails: RequestDetails,
+  ): Promise<TraceBlockTxResult[]> {
+    return this.traceBlock(blockHash, tracerObject, requestDetails, true);
   }
 
   /**
@@ -880,5 +905,90 @@ export class DebugImpl implements Debug {
     }
 
     return this.getEmptyTracerObject(tracer) as EntityTraceStateMap | OpcodeLoggerResult;
+  }
+
+  /**
+   * Shared implementation for tracing all transactions in a block.
+   * Used by both debug_traceBlockByNumber and debug_traceBlockByHash.
+   *
+   * @private
+   * @param blockIdentifier - The block number (hex) or block hash to trace.
+   * @param tracerObject - The configuration wrapper containing tracer type and config.
+   * @param requestDetails - The request details for logging and tracking.
+   * @param filterPreExecutionFailures - When true, filters out transactions with pre-execution validation failures (WRONG_NONCE, etc.).
+   * @returns A Promise that resolves to an array of trace results for each transaction in the block.
+   */
+  private async traceBlock(
+    blockIdentifier: string,
+    tracerObject: BlockTracerConfig,
+    requestDetails: RequestDetails,
+    filterPreExecutionFailures: boolean = false,
+  ): Promise<TraceBlockTxResult[]> {
+    try {
+      DebugImpl.requireDebugAPIEnabled();
+      const blockResponse = await this.common.getHistoricalBlockResponse(requestDetails, blockIdentifier, true);
+
+      if (blockResponse == null) throw predefined.RESOURCE_NOT_FOUND(`Block ${blockIdentifier} not found`);
+
+      // Get ALL transaction hashes (EVM + synthetic) along with pre-fetched data
+      const { transactionHashes, preFetchedData } = await this.getBlockTransactionDetails(
+        blockResponse,
+        requestDetails,
+      );
+
+      if (transactionHashes.length === 0) {
+        return [];
+      }
+
+      // Filter out pre-execution validation failures if requested (for traceBlockByHash)
+      const filteredTxHashes = filterPreExecutionFailures
+        ? transactionHashes.filter((txHash) => {
+            const contractResult = preFetchedData[txHash]?.contractResult;
+            return !contractResult || !Utils.isRejectedDueToHederaSpecificValidation(contractResult);
+          })
+        : transactionHashes;
+
+      if (filteredTxHashes.length === 0) {
+        return [];
+      }
+
+      const tracer = tracerObject?.tracer ?? TracerType.CallTracer;
+      const onlyTopCall = tracerObject?.tracerConfig?.onlyTopCall;
+
+      // Trace all transactions using existing tracer methods with pre-fetched data
+      if (tracer === TracerType.CallTracer) {
+        return await Promise.all(
+          filteredTxHashes.map(async (txHash) => ({
+            txHash,
+            result: await this.callTracer(
+              txHash,
+              { onlyTopCall },
+              requestDetails,
+              preFetchedData[txHash]?.contractResult,
+              preFetchedData[txHash]?.actions,
+            ),
+          })),
+        );
+      }
+
+      if (tracer === TracerType.PrestateTracer) {
+        return await Promise.all(
+          filteredTxHashes.map(async (txHash) => ({
+            txHash,
+            result: await this.prestateTracer(
+              txHash,
+              onlyTopCall,
+              requestDetails,
+              preFetchedData[txHash]?.actions,
+              preFetchedData[txHash]?.contractResult,
+            ),
+          })),
+        );
+      }
+
+      return [];
+    } catch (error) {
+      throw this.common.genericErrorHandler(error);
+    }
   }
 }
