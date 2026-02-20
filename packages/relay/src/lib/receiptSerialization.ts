@@ -39,6 +39,8 @@ function encodeLogsForReceipt(logs: Log[]): [Uint8Array, Uint8Array[], Uint8Arra
  * logs_bloom, logs) per the Ethereum Yellow Paper. For typed transactions (type !== 0),
  * the output is the single-byte type prefix followed by that RLP payload (EIP-2718).
  *
+ * Based on section 4.4.1 (Transaction Receipt) from the Ethereum Yellow Paper: https://ethereum.github.io/yellowpaper/paper.pdf
+ *
  * @param receipt - The transaction receipt to encode (see {@link ITransactionReceipt}).
  * @returns Hex string (0x-prefixed) of the encoded receipt, suitable for receipts root hashing.
  */
