@@ -9,7 +9,7 @@ import pino from 'pino';
 import { register, Registry } from 'prom-client';
 import sinon from 'sinon';
 
-import { Eth, predefined } from '../../src';
+import { predefined } from '../../src';
 import { strip0x } from '../../src/formatters';
 import { MirrorNodeClient } from '../../src/lib/clients';
 import { IOpcodesResponse } from '../../src/lib/clients/models/IOpcodesResponse';
@@ -36,7 +36,6 @@ let restMock: MockAdapter;
 let web3Mock: MockAdapter;
 let mirrorNodeInstance: MirrorNodeClient;
 let debugService: DebugImpl;
-let ethStub: Eth;
 
 describe('Debug API Test Suite', async function () {
   this.timeout(10000);
@@ -2089,39 +2088,6 @@ describe('Debug API Test Suite', async function () {
     });
   });
 
-  describe('debug_getBadBlocks', async function () {
-    withOverriddenEnvsInMochaTest({ DEBUG_API_ENABLED: true }, () => {
-      it('should return an empty array', async function () {
-        const result = await debugService.getBadBlocks();
-        expect(result).to.deep.equal([]);
-      });
-    });
-
-    withOverriddenEnvsInMochaTest({ DEBUG_API_ENABLED: undefined }, () => {
-      it('should throw UNSUPPORTED_METHOD', async function () {
-        await RelayAssertions.assertRejection(
-          predefined.UNSUPPORTED_METHOD,
-          debugService.getBadBlocks,
-          true,
-          debugService,
-          [],
-        );
-      });
-    });
-
-    withOverriddenEnvsInMochaTest({ DEBUG_API_ENABLED: false }, () => {
-      it('should throw UNSUPPORTED_METHOD', async function () {
-        await RelayAssertions.assertRejection(
-          predefined.UNSUPPORTED_METHOD,
-          debugService.getBadBlocks,
-          true,
-          debugService,
-          [],
-        );
-      });
-    });
-  });
-
   describe('debug_getRawTransaction', async function () {
     const txHash = '0xb7a433b014684558d4154c73de3ed360bd5867725239938c2143acb7a76bca82';
 
@@ -2542,7 +2508,12 @@ describe('Debug API Test Suite', async function () {
 
       it('should return empty array when the transaction hash is not found', async function () {
         // Create a separate DebugImpl instance just for this test
-        const isolatedDebugService = new DebugImpl(mirrorNodeInstance, logger, cacheService, ethStub);
+        const isolatedDebugService = new DebugImpl(
+          mirrorNodeInstance,
+          logger,
+          cacheService,
+          ConfigService.get('CHAIN_ID'),
+        );
 
         // Mock the API calls for actions and contract result to return 404
         restMock.onGet(`contracts/results/${nonExistentTransactionHash}/actions`).reply(
