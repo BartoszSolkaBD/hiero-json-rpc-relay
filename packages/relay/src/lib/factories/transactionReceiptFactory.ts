@@ -5,7 +5,6 @@ import { LogsBloomUtils } from '../../logsBloomUtils';
 import constants from '../constants';
 import { Log } from '../model';
 import { ITransactionReceipt } from '../types';
-import { IReceiptRlpInput } from '../types/IReceiptRlpInput';
 
 /**
  * Parameters specific to creating a synthetic transaction receipt from logs
@@ -24,12 +23,6 @@ interface IRegularTransactionReceiptParams {
   logs: Log[];
   receiptResponse: any;
   to: string | null;
-}
-
-interface IRegularTransactionReceiptRlpInputParams {
-  logs: Log[];
-  receiptResponse: any;
-  blockGasUsedBeforeTransaction: number;
 }
 
 /**
@@ -59,31 +52,6 @@ class TransactionReceiptFactory {
       status: constants.ONE_HEX,
       to: syntheticLogs[0].address,
       transactionHash: syntheticLogs[0].transactionHash,
-      transactionIndex: syntheticLogs[0].transactionIndex,
-      type: constants.ZERO_HEX, // fallback to 0x0 from HAPI transactions
-    };
-  }
-
-  /**
-   * Creates a minimal receipt payload for RLP-encoding of a synthetic transaction.
-   *
-   * Builds an `IReceiptRlpInput` from synthetic logs only, without resolving any
-   * addresses or constructing a full `ITransactionReceipt`. The returned shape
-   * contains the fields required for Yellow Paper receipt encoding, including a zero
-   * cumulative gas used, zero gas used, a logs bloom computed from the first
-   * synthetic log, default root and status values, the transaction index from
-   * the first log, and a fallback type of `0x0`.
-   *
-   * @param syntheticLogs - Logs belonging to the synthetic transaction.
-   * @returns Minimal receipt data suitable for RLP encoding.
-   */
-  public static createSyntheticReceiptRlpInput(syntheticLogs: Log[]): IReceiptRlpInput {
-    return {
-      cumulativeGasUsed: constants.ZERO_HEX,
-      logs: syntheticLogs,
-      logsBloom: LogsBloomUtils.buildLogsBloom(syntheticLogs[0].address, syntheticLogs[0].topics),
-      root: constants.DEFAULT_ROOT_HASH,
-      status: constants.ONE_HEX,
       transactionIndex: syntheticLogs[0].transactionIndex,
       type: constants.ZERO_HEX, // fallback to 0x0 from HAPI transactions
     };
@@ -160,32 +128,6 @@ class TransactionReceiptFactory {
   }
 
   /**
-   * Creates a minimal receipt payload for RLP-encoding of a regular transaction.
-   *
-   * Builds an `IReceiptRlpInput` from mirror node contract result data and the
-   * running cumulative gas used before this transaction. The returned shape
-   * contains only the fields required for Yellow Paper receipt encoding, including the updated cumulative gas used,
-   * logs and bloom, root and status, transaction index, and normalized type.
-   * @param params - Parameters required to build the RLP input, including
-   *   contract result data, associated logs, and the cumulative gas used prior
-   *   to this transaction.
-   * @returns Minimal receipt data suitable for RLP encoding.
-   */
-  public static createReceiptRlpInput(params: IRegularTransactionReceiptRlpInputParams): IReceiptRlpInput {
-    const { receiptResponse, logs, blockGasUsedBeforeTransaction } = params;
-
-    return {
-      cumulativeGasUsed: numberTo0x(blockGasUsedBeforeTransaction + receiptResponse.gas_used),
-      logs: logs,
-      logsBloom: receiptResponse.bloom === constants.EMPTY_HEX ? constants.EMPTY_BLOOM : receiptResponse.bloom,
-      root: receiptResponse.root || constants.DEFAULT_ROOT_HASH,
-      status: receiptResponse.status,
-      transactionIndex: numberTo0x(receiptResponse.transaction_index),
-      type: nanOrNumberTo0x(receiptResponse.type),
-    };
-  }
-
-  /**
    * Helper method to determine if a receipt response includes a contract address
    *
    * @param receiptResponse Mirror node contract result response
@@ -207,9 +149,4 @@ class TransactionReceiptFactory {
   }
 }
 
-export {
-  ISyntheticTransactionReceiptParams,
-  IRegularTransactionReceiptParams,
-  IRegularTransactionReceiptRlpInputParams,
-  TransactionReceiptFactory,
-};
+export { ISyntheticTransactionReceiptParams, IRegularTransactionReceiptParams, TransactionReceiptFactory };
