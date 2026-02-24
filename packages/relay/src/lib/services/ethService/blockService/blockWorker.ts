@@ -21,7 +21,6 @@ import {
   TransactionReceiptFactory,
 } from '../../../factories/transactionReceiptFactory';
 import { Block, Log, Transaction } from '../../../model';
-import { encodeReceiptToHex } from '../../../receiptSerialization';
 import { IContractResultsParams, ITransactionReceipt, MirrorNodeBlock, RequestDetails } from '../../../types';
 import { IReceiptRlpInput } from '../../../types/IReceiptRlpInput';
 import { WorkersPool } from '../../workersService/WorkersPool';
@@ -422,30 +421,25 @@ export async function getRawReceipts(
       return [];
     }
 
-    const encodedReceipts: string[] = [];
-
     let blockGasUsedBeforeTransaction = 0;
-    const encodedReceiptPromises = contractResults.map(async (contractResult) => {
-      if (Utils.isRejectedDueToHederaSpecificValidation(contractResult)) {
-        logger.debug(
-          `Transaction with hash %s is skipped due to hedera-specific validation failure (%s)`,
-          contractResult.hash,
-          contractResult.result,
-        );
-        return null;
-      }
+    const encodedReceipts = contractResults
+      .map((contractResult) => {
+        if (Utils.isRejectedDueToHederaSpecificValidation(contractResult)) {
+          logger.debug(
+            `Transaction with hash %s is skipped due to hedera-specific validation failure (%s)`,
+            contractResult.hash,
+            contractResult.result,
+          );
+          return null;
+        }
 
-      contractResult.logs = logsByHash.get(contractResult.hash) || [];
+        const logs = logsByHash.get(contractResult.hash) || [];
 
-      const receiptRlpInput = createReceiptRlpInput(contractResult.logs, contractResult, blockGasUsedBeforeTransaction);
-      blockGasUsedBeforeTransaction += contractResult.gas_used;
-      return encodeReceiptToHex(receiptRlpInput);
-    });
-
-    const resolvedEncodedReceipts = await Promise.all(encodedReceiptPromises);
-    encodedReceipts.push(
-      ...resolvedEncodedReceipts.filter((encodedReceipt): encodedReceipt is string => encodedReceipt !== null),
-    );
+        const receiptRlpInput = createReceiptRlpInput(logs, contractResult, blockGasUsedBeforeTransaction);
+        blockGasUsedBeforeTransaction += contractResult.gas_used;
+        return TransactionReceiptFactory.encodeReceiptToHex(receiptRlpInput);
+      })
+      .filter((encodedReceipt): encodedReceipt is string => encodedReceipt !== null);
 
     const regularTxHashes = new Set(contractResults.map((result) => result.hash));
 
@@ -453,7 +447,7 @@ export async function getRawReceipts(
     for (const [txHash, logGroup] of logsByHash.entries()) {
       if (!regularTxHashes.has(txHash)) {
         const syntheticReceiptRlpInput = createSyntheticReceiptRlpInput(logGroup);
-        encodedReceipts.push(encodeReceiptToHex(syntheticReceiptRlpInput));
+        encodedReceipts.push(TransactionReceiptFactory.encodeReceiptToHex(syntheticReceiptRlpInput));
       }
     }
 
