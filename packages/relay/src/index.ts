@@ -35,8 +35,10 @@ export interface Debug {
 
   getRawBlock(blockNrOrHash: string, requestDetails: RequestDetails): Promise<string | JsonRpcError>;
 
+  getRawHeader(blockNrOrHash: string, requestDetails: RequestDetails): Promise<string | JsonRpcError>;
+  
   getRawTransaction(transactionHash: string, requestDetails: RequestDetails): Promise<string>;
-
+  
   traceBlockByHash(blockHash: string, tracerObject: BlockTracerConfig, requestDetails: RequestDetails): Promise<any>;
 }
 
