@@ -23,7 +23,7 @@ interface IRegularTransactionReceiptParams {
   logs: Log[];
   receiptResponse: any;
   to: string | null;
-  blockGasUsedBeforeTransaction: number;
+  blockGasUsedBeforeTransaction?: number;
 }
 
 /**
@@ -105,7 +105,10 @@ class TransactionReceiptFactory {
       blockNumber: numberTo0x(receiptResponse.block_number),
       from: from,
       to: to,
-      cumulativeGasUsed: numberTo0x(blockGasUsedBeforeTransaction + receiptResponse.gas_used),
+      cumulativeGasUsed:
+        blockGasUsedBeforeTransaction != null
+          ? numberTo0x(blockGasUsedBeforeTransaction + receiptResponse.gas_used)
+          : constants.ZERO_HEX,
       gasUsed: nanOrNumberTo0x(receiptResponse.gas_used),
       contractAddress: contractAddress,
       logs: logs,

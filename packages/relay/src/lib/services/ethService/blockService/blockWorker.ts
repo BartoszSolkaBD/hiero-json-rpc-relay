@@ -395,15 +395,7 @@ export async function getBlockReceipts(
       logsByHash.set(log.transactionHash, existingLogs);
     }
 
-    // Ensure contract results are processed in transaction_index (block) order
-    const sortedContractResults = [...contractResults].sort((a, b) => {
-      const aIdx = a.transaction_index ?? Number.MAX_SAFE_INTEGER;
-      const bIdx = b.transaction_index ?? Number.MAX_SAFE_INTEGER;
-      return aIdx - bIdx;
-    });
-
-    let blockGasUsedBeforeTransaction = 0;
-    const receiptPromises = sortedContractResults.map(async (contractResult) => {
+    const receiptPromises = contractResults.map(async (contractResult) => {
       if (Utils.isRejectedDueToHederaSpecificValidation(contractResult)) {
         logger.debug(
           `Transaction with hash %s is skipped due to hedera-specific validation failure (%s)`,
@@ -425,11 +417,9 @@ export async function getBlockReceipts(
         logs: contractResult.logs,
         receiptResponse: contractResult,
         to,
-        blockGasUsedBeforeTransaction,
       };
 
       const receipt = TransactionReceiptFactory.createRegularReceipt(transactionReceiptParams) as ITransactionReceipt;
-      blockGasUsedBeforeTransaction += contractResult.gas_used;
       return receipt;
     });
 
@@ -449,7 +439,17 @@ export async function getBlockReceipts(
       }
     }
 
-    return receipts;
+    // after all the receipts are created, we need to sort them by transaction index and calculate the cumulative gas used
+    const sortedReceipts = receipts.sort(
+      (a, b) => parseInt(a.transactionIndex ?? '0', 16) - parseInt(b.transactionIndex ?? '0', 16),
+    );
+    let blockGasUsedBeforeTransaction = 0;
+    for (const receipt of sortedReceipts) {
+      blockGasUsedBeforeTransaction += parseInt(receipt.gasUsed, 16);
+      receipt.cumulativeGasUsed = numberTo0x(blockGasUsedBeforeTransaction);
+    }
+
+    return sortedReceipts as ITransactionReceipt[];
   } catch (e: unknown) {
     throw WorkersPool.wrapError(e);
   }
