@@ -363,16 +363,12 @@ export class DebugImpl implements Debug {
   })
   @cache()
   async getRawTransaction(transactionHash: string, requestDetails: RequestDetails): Promise<string> {
-    try {
-      DebugImpl.requireDebugAPIEnabled();
-      const tx = await this.transactionService.getTransactionByHash(transactionHash, requestDetails);
-      if (!tx) {
-        return '0x';
-      }
-      return BlockFactory.rlpEncodeTx(tx);
-    } catch (error) {
-      throw this.common.genericErrorHandler(error);
+    DebugImpl.requireDebugAPIEnabled();
+    const tx = await this.transactionService.getTransactionByHash(transactionHash, requestDetails);
+    if (!tx) {
+      return '0x';
     }
+    return BlockFactory.rlpEncodeTx(tx);
   }
 
   /**
