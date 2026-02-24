@@ -8,7 +8,5 @@
 // Note: This is the original test file, modified for our test purposes:
 // https://github.com/ethereum/execution-apis/blob/main/tests/debug_getRawTransaction/get-tx.io
 
-## wildcard: result
-
 >> {"jsonrpc":"2.0","id":1,"method":"debug_getRawTransaction","params":["0xbdb37c763e721bf1a0e94e0bc72db704110b2ccc6720713708744422a2cc95d6"]}
 << {"jsonrpc":"2.0","id":1,"result":"0x"}
