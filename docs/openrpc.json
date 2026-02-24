@@ -1452,21 +1452,6 @@
       }
     },
     {
-      "name": "debug_getBadBlocks",
-      "summary": "Returns an array of recent bad blocks (bad blocks are always an empty array [] due to Hedera specifics) that the client has seen on the network.",
-      "description": "![](https://raw.githubusercontent.com/hiero-ledger/hiero-json-rpc-relay/main/docs/images/http_label.png)",
-      "params": [],
-      "result": {
-        "name": "debug_getBadBlocks result",
-        "description": "Always returns an empty array",
-        "schema": {
-          "title": "empty array",
-          "type": "array",
-          "pattern": "^\\[\\s*\\]$"
-        }
-      }
-    },
-    {
       "name": "debug_getRawReceipts",
       "summary": "Returns an array of EIP-2718 binary-encoded receipts.",
       "description": "![](https://raw.githubusercontent.com/hiero-ledger/hiero-json-rpc-relay/main/docs/images/http_label.png)",
@@ -1480,7 +1465,7 @@
         }
       ],
       "result": {
-        "name": "debug_getRawReceipts result",
+        "name": "Receipts",
         "description": "An array of EIP-2718 binary-encoded receipts.",
         "schema": {
           "type": "array",
