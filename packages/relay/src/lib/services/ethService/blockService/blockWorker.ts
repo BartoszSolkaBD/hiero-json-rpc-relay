@@ -395,6 +395,7 @@ export async function getBlockReceipts(
       logsByHash.set(log.transactionHash, existingLogs);
     }
 
+    let blockGasUsedBeforeTransaction = 0;
     const receiptPromises = contractResults.map(async (contractResult) => {
       if (Utils.isRejectedDueToHederaSpecificValidation(contractResult)) {
         logger.debug(
@@ -417,9 +418,11 @@ export async function getBlockReceipts(
         logs: contractResult.logs,
         receiptResponse: contractResult,
         to,
+        blockGasUsedBeforeTransaction,
       };
 
       const receipt = TransactionReceiptFactory.createRegularReceipt(transactionReceiptParams) as ITransactionReceipt;
+      blockGasUsedBeforeTransaction += contractResult.gas_used;
       return receipt;
     });
 
@@ -439,15 +442,18 @@ export async function getBlockReceipts(
       }
     }
 
-    // after all the receipts are created, we need to sort them by transaction index and calculate the cumulative gas used
+    // after all the receipts are created, we need to sort them by transaction index and calculate the cumulative gas used for synthetic receipts
     const sortedReceipts = receipts.sort(
       (a, b) => parseInt(a.transactionIndex ?? '0', 16) - parseInt(b.transactionIndex ?? '0', 16),
     );
-    let blockGasUsedBeforeTransaction = 0;
-    for (const receipt of sortedReceipts) {
-      blockGasUsedBeforeTransaction += parseInt(receipt.gasUsed, 16);
-      receipt.cumulativeGasUsed = numberTo0x(blockGasUsedBeforeTransaction);
-    }
+
+    sortedReceipts.forEach((receipt, index) => {
+      const isSynthetic = receipt.cumulativeGasUsed === constants.ZERO_HEX; // assuming that synthetic receipts have 0 gas used and regular receipts have non-zero gas used
+      if (index > 0 && isSynthetic) {
+        // if the index is 0, we don't need to set the cumulative gas used for the synthetic receipt, as it's already set to 0
+        receipt.cumulativeGasUsed = sortedReceipts[index - 1].cumulativeGasUsed; // assign the cumulative gas of previous transaction, as the synthetic transaction uses 0 gas
+      }
+    });
 
     return sortedReceipts as ITransactionReceipt[];
   } catch (e: unknown) {
