@@ -183,11 +183,17 @@ class TransactionReceiptFactory {
         ? new Uint8Array(0)
         : hexToBytes(prepend0x(BigInt(cumulativeGasUsed).toString(16))); // canonical RLP encoding (no leading zeros)
 
+    const receiptLogsParam = receipt.logs.map((log) => [
+      hexToBytes(log.address),
+      log.topics.map((t) => hexToBytes(t)),
+      hexToBytes(log.data),
+    ]);
+
     const encodedList = RLP.encode([
       receiptRootOrStatus,
       cumulativeGasUsedBytes,
       hexToBytes(receipt.logsBloom),
-      this.encodeLogsForReceipt(receipt.logs),
+      receiptLogsParam,
     ]);
 
     if (txType === 0) {
@@ -195,19 +201,6 @@ class TransactionReceiptFactory {
     }
     const withPrefix = concatBytes(intToBytes(txType), encodedList);
     return prepend0x(toHexString(withPrefix));
-  }
-
-  /**
-   * Converts receipt logs into the RLP encoded log structure.
-   *
-   * Each log becomes a 3-tuple [address, topics[], data] per the Yellow Paper
-   * (address and data as bytes; topics as array of 32-byte topic hashes).
-   *
-   * @param logs - The logs array from the transaction receipt (see {@link Log}).
-   * @returns Array of [address, topics, data] as Uint8Arrays for RLP encoding.
-   */
-  private static encodeLogsForReceipt(logs: Log[]): [Uint8Array, Uint8Array[], Uint8Array][] {
-    return logs.map((log) => [hexToBytes(log.address), log.topics.map((t) => hexToBytes(t)), hexToBytes(log.data)]);
   }
 }
 
