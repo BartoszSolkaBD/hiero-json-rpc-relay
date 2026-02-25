@@ -511,7 +511,7 @@ export class DebugImpl implements Debug {
           [transactionIdOrHash, requestDetails],
         );
 
-        if (contractResult && Utils.isRejectedDueToHederaSpecificValidation(contractResult)) {
+        if (contractResult) {
           return this.getEmptyTracerObject(TracerType.OpcodeLogger) as OpcodeLoggerResult;
         }
 
@@ -559,9 +559,9 @@ export class DebugImpl implements Debug {
     }
 
     try {
-      // Check for pre-execution validation failure first (e.g., MAX_GAS_LIMIT_EXCEEDED, WRONG_NONCE)
-      // These transactions never executed EVM bytecode, so return an empty trace with the error
-      if (transactionsResponse && Utils.isRejectedDueToHederaSpecificValidation(transactionsResponse)) {
+      // If we have a contract result but no actions, treat it as a non-synthetic tx
+      // that had no EVM execution and return an empty trace (with error details if any).
+      if (transactionsResponse && (!actionsResponse || actionsResponse.length === 0)) {
         const { resolvedFrom, resolvedTo } = await this.resolveMultipleAddresses(
           transactionsResponse.from,
           transactionsResponse.to,
@@ -668,8 +668,8 @@ export class DebugImpl implements Debug {
       ]);
     }
 
-    // Check for pre-execution validation failure first - return empty prestate
-    if (transactionsResponse && Utils.isRejectedDueToHederaSpecificValidation(transactionsResponse)) {
+    // Return empty tracer if we have a contract result but no actions
+    if (transactionsResponse && (!actionsResponse || actionsResponse.length === 0)) {
       return this.getEmptyTracerObject(TracerType.PrestateTracer) as EntityTraceStateMap;
     }
 
