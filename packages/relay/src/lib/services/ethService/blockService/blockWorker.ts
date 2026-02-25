@@ -131,6 +131,18 @@ function populateSyntheticTransactions(
   return [...deduplicatedInput, ...syntheticTransactions.values()] as Transaction[] | string[];
 }
 
+/**
+ * Builds Ethereum-style receipt objects.
+ *
+ * Groups mirror node logs and contract results by transaction hash, derives a numeric
+ * transaction index for each transaction, orders them by that index, and then produces
+ * `IReceiptRootHash` entries with cumulative gas, status, bloom, and logs.
+ *
+ * @param txHashes - Transaction hashes for the block.
+ * @param contractResults - Contract results returned by the mirror node for the block.
+ * @param logs - Log entries returned by the mirror node for the block.
+ * @returns An array of receipt objects, sorted by transaction index.
+ */
 function buildReceiptRootHashes(txHashes: string[], contractResults: any[], logs: Log[]): IReceiptRootHash[] {
   const items: {
     transactionIndex: number;
@@ -138,9 +150,24 @@ function buildReceiptRootHashes(txHashes: string[], contractResults: any[], logs
     crPerTx: any[];
   }[] = [];
 
+  //build lookup maps for logs and contract results by transaction hash to avoid O(n^2) complexity
+  const logsByTxHash = new Map<string, Log[]>();
+  for (const log of logs) {
+    const list = logsByTxHash.get(log.transactionHash) ?? [];
+    list.push(log);
+    logsByTxHash.set(log.transactionHash, list);
+  }
+
+  const contractResultsByHash = new Map<string, any[]>();
+  for (const cr of contractResults) {
+    const list = contractResultsByHash.get(cr.hash) ?? [];
+    list.push(cr);
+    contractResultsByHash.set(cr.hash, list);
+  }
+
   for (const txHash of txHashes) {
-    const logsPerTx: Log[] = logs.filter((log) => log.transactionHash === txHash);
-    const crPerTx: any[] = contractResults.filter((cr) => cr.hash === txHash);
+    const logsPerTx: Log[] = logsByTxHash.get(txHash) ?? [];
+    const crPerTx: any[] = contractResultsByHash.get(txHash) ?? [];
 
     // Derive numeric transaction index (for ordering)
     let txIndexNum: number = 0;
@@ -172,7 +199,10 @@ function buildReceiptRootHashes(txHashes: string[], contractResults: any[], logs
 
     receipts.push({
       transactionIndex: transactionIndexHex,
-      type: crPerTx.length && crPerTx[0].type ? intToHex(crPerTx[0].type) : null,
+      type:
+        crPerTx.length > 0 && crPerTx[0].type !== undefined && crPerTx[0].type !== null
+          ? intToHex(crPerTx[0].type)
+          : null,
       root: crPerTx.length ? crPerTx[0].root : constants.ZERO_HEX_32_BYTE,
       status: crPerTx.length ? crPerTx[0].status : constants.ONE_HEX,
       cumulativeGasUsed: intToHex(cumulativeGas),
