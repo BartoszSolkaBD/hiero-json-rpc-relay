@@ -668,12 +668,13 @@ export class DebugImpl implements Debug {
       ]);
     }
 
-    // Return empty tracer if we have a contract result but no actions
-    if (transactionsResponse && (!actionsResponse || actionsResponse.length === 0)) {
-      return this.getEmptyTracerObject(TracerType.PrestateTracer) as EntityTraceStateMap;
-    }
-
     if (!actionsResponse || actionsResponse.length === 0) {
+      // Contract result exists but no actions -> non-synthetic, non-executed; empty prestate
+      if (transactionsResponse) {
+        return this.getEmptyTracerObject(TracerType.PrestateTracer) as EntityTraceStateMap;
+      }
+
+      // No contract result and no actions -> synthetic or truly missing
       return (await this.handleSyntheticTransaction(
         transactionHash,
         TracerType.PrestateTracer,
