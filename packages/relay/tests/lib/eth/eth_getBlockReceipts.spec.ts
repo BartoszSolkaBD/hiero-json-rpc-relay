@@ -91,12 +91,12 @@ describe('@ethGetBlockReceipts using MirrorNode', async function () {
     });
   }
 
-  function expectValidReceipt(receipt, contractResult, blockGasUsedBeforeTransaction: number) {
+  function expectValidReceipt(receipt, contractResult, cumulativeGasUsed: number) {
     expect(receipt.blockHash).to.equal(BLOCK_HASH_TRIMMED);
     expect(receipt.blockNumber).to.equal(BLOCK_NUMBER_HEX);
     expect(receipt.transactionHash).to.equal(contractResult.hash);
     expect(receipt.gasUsed).to.equal(numberTo0x(contractResult.gas_used));
-    expect(receipt.cumulativeGasUsed).to.equal(numberTo0x(blockGasUsedBeforeTransaction + contractResult.gas_used));
+    expect(receipt.cumulativeGasUsed).to.equal(numberTo0x(cumulativeGasUsed));
   }
 
   function sortReceiptsByTransactionIndex(receipts: ITransactionReceipt[]): ITransactionReceipt[] {
@@ -111,11 +111,11 @@ describe('@ethGetBlockReceipts using MirrorNode', async function () {
       expect(receipts).to.exist;
       expect(receipts.length).to.equal(2);
 
-      let blockGasUsedBeforeTransaction = 0;
+      let cumulativeGasUsed = 0;
       sortReceiptsByTransactionIndex(receipts!).forEach((receipt, index) => {
         const contractResult = results[index];
-        expectValidReceipt(receipt, contractResult, blockGasUsedBeforeTransaction);
-        blockGasUsedBeforeTransaction += contractResult.gas_used;
+        cumulativeGasUsed += contractResult.gas_used;
+        expectValidReceipt(receipt, contractResult, cumulativeGasUsed);
       });
     });
 
@@ -126,11 +126,11 @@ describe('@ethGetBlockReceipts using MirrorNode', async function () {
       expect(receipts).to.exist;
       expect(receipts.length).to.equal(2);
 
-      let blockGasUsedBeforeTransaction = 0;
+      let cumulativeGasUsed = 0;
       sortReceiptsByTransactionIndex(receipts!).forEach((receipt, index) => {
         const contractResult = results[index];
-        expectValidReceipt(receipt, contractResult, blockGasUsedBeforeTransaction);
-        blockGasUsedBeforeTransaction += contractResult.gas_used;
+        cumulativeGasUsed += contractResult.gas_used;
+        expectValidReceipt(receipt, contractResult, cumulativeGasUsed);
       });
     });
 
@@ -141,11 +141,11 @@ describe('@ethGetBlockReceipts using MirrorNode', async function () {
       expect(receipts).to.exist;
       expect(receipts.length).to.equal(2);
 
-      let blockGasUsedBeforeTransaction = 0;
+      let cumulativeGasUsed = 0;
       sortReceiptsByTransactionIndex(receipts!).forEach((receipt, index) => {
         const contractResult = results[index];
-        expectValidReceipt(receipt, contractResult, blockGasUsedBeforeTransaction);
-        blockGasUsedBeforeTransaction += contractResult.gas_used;
+        cumulativeGasUsed += contractResult.gas_used;
+        expectValidReceipt(receipt, contractResult, cumulativeGasUsed);
       });
     });
 
@@ -158,11 +158,11 @@ describe('@ethGetBlockReceipts using MirrorNode', async function () {
       expect(receipts).to.exist;
       expect(receipts.length).to.equal(2);
 
-      let blockGasUsedBeforeTransaction = 0;
+      let cumulativeGasUsed = 0;
       sortReceiptsByTransactionIndex(receipts!).forEach((receipt, index) => {
         const contractResult = results[index];
-        expectValidReceipt(receipt, contractResult, blockGasUsedBeforeTransaction);
-        blockGasUsedBeforeTransaction += contractResult.gas_used;
+        cumulativeGasUsed += contractResult.gas_used;
+        expectValidReceipt(receipt, contractResult, cumulativeGasUsed);
       });
     });
 
@@ -187,7 +187,7 @@ describe('@ethGetBlockReceipts using MirrorNode', async function () {
         expect(receipts.length).to.equal(1);
         expect(receipts[0].transactionHash).to.equal(results[0].hash);
 
-        expectValidReceipt(receipts[0], results[0], 0);
+        expectValidReceipt(receipts[0], results[0], results[0].gas_used);
       });
     });
 

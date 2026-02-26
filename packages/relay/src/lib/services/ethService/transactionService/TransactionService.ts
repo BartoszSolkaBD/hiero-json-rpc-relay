@@ -493,7 +493,7 @@ export class TransactionService implements ITransactionService {
       this.common.resolveEvmAddress(receiptResponse.to, requestDetails),
     ]);
 
-    let blockGasUsedBeforeTransaction = 0;
+    let cumulativeGasUsed = 0;
     if (receiptResponse.transaction_index > 0) {
       const params: IContractResultsParams = {
         blockNumber: receiptResponse.block_number,
@@ -511,12 +511,14 @@ export class TransactionService implements ITransactionService {
             continue;
           }
 
-          // Only sum gas for transactions that come before this one in the block
-          if (cr.transaction_index < receiptResponse.transaction_index) {
-            blockGasUsedBeforeTransaction += cr.gas_used;
+          // Only sum gas for transactions that come up to this one in the block (inclusive)
+          if (cr.transaction_index <= receiptResponse.transaction_index) {
+            cumulativeGasUsed += cr.gas_used;
           }
         }
       }
+    } else {
+      cumulativeGasUsed = receiptResponse.gas_used;
     }
 
     return TransactionReceiptFactory.createRegularReceipt({
@@ -525,7 +527,7 @@ export class TransactionService implements ITransactionService {
       logs,
       receiptResponse,
       to,
-      blockGasUsedBeforeTransaction,
+      cumulativeGasUsed,
     });
   }
 

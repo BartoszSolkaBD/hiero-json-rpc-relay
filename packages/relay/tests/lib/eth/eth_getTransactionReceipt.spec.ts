@@ -159,6 +159,13 @@ describe('@ethGetTransactionReceipt eth_getTransactionReceipt tests', async func
     restMock
       .onGet(`contracts/results/${defaultTxHash}`)
       .reply(200, JSON.stringify(defaultDetailedContractResultByHash));
+    restMock.onGet(`contracts/results?block.number=${BLOCK_NUMBER}`).reply(
+      200,
+      JSON.stringify({
+        results: [defaultDetailedContractResultByHash],
+        links: { next: null },
+      }),
+    );
     restMock.onGet(`contracts/${defaultDetailedContractResultByHash.created_contract_ids[0]}`).reply(404);
     stubBlockAndFeesFunc(sandbox);
     const receipt = await ethImpl.getTransactionReceipt(defaultTxHash, requestDetails);
