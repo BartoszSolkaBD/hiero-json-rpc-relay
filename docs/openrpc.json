@@ -1317,6 +1317,28 @@
       }
     },
     {
+      "name": "debug_getRawHeader",
+      "summary": "Returns an RLP-encoded header.",
+      "description": "![](https://raw.githubusercontent.com/hiero-ledger/hiero-json-rpc-relay/main/docs/images/http_label.png)",
+      "params": [
+        {
+          "name": "block",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/BlockNumberOrTagOrHash"
+          }
+        }
+      ],
+      "result": {
+        "name": "Header RLP",
+        "description": "The RLP-encoded block header, or 0x if the block is not found",
+        "schema": {
+          "title": "raw header",
+          "$ref": "#/components/schemas/bytes"
+        }
+      }
+    },
+    {
       "name": "debug_traceBlockByNumber",
       "summary": "Returns the tracing result for all transactions in the block specified by number with a tracer.",
       "description": "![](https://raw.githubusercontent.com/hiero-ledger/hiero-json-rpc-relay/main/docs/images/http_label.png)",
@@ -1426,6 +1448,30 @@
           "title": "empty array",
           "type": "array",
           "pattern": "^\\[\\s*\\]$"
+        }
+      }
+    },
+    {
+      "name": "debug_getRawReceipts",
+      "summary": "Returns an array of EIP-2718 binary-encoded receipts.",
+      "description": "![](https://raw.githubusercontent.com/hiero-ledger/hiero-json-rpc-relay/main/docs/images/http_label.png)",
+      "params": [
+        {
+          "name": "block",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/BlockNumberOrTagOrHash"
+          }
+        }
+      ],
+      "result": {
+        "name": "Receipts",
+        "description": "An array of EIP-2718 binary-encoded receipts.",
+        "schema": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/bytes"
+          }
         }
       }
     },

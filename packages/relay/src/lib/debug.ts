@@ -3,7 +3,15 @@
 import { ConfigService } from '@hashgraph/json-rpc-config-service/dist/services';
 import type { Logger } from 'pino';
 
-import { decodeErrorMessage, mapKeysAndValues, numberTo0x, prepend0x, strip0x, tinybarsToWeibars } from '../formatters';
+import {
+  decodeErrorMessage,
+  mapKeysAndValues,
+  numberTo0x,
+  prepend0x,
+  strip0x,
+  tinybarsToWeibars,
+  toHexString,
+} from '../formatters';
 import { type Debug } from '../index';
 import { JsonRpcError } from '../index';
 import { Utils } from '../utils';
@@ -133,7 +141,42 @@ export class DebugImpl implements Debug {
       return constants.EMPTY_HEX;
     }
 
-    return constants.EMPTY_HEX + Buffer.from(BlockFactory.rlpEncode(block)).toString('hex');
+    return constants.EMPTY_HEX + Buffer.from(BlockFactory.rlpEncodeBlock(block)).toString('hex');
+  }
+
+  /**
+   * Get a raw block header for debugging purposes.
+   *
+   * @async
+   * @rpcMethod Exposed as debug_getRawHeader RPC endpoint
+   * @rpcParamValidationRules Applies JSON-RPC parameter validation according to the API specification
+   *
+   * @param {string} blockNrOrHash - The block number, tag or hash. Possible values are 'earliest', 'pending', 'latest', hex block number or 32 bytes hash.
+   * @param {RequestDetails} requestDetails - Request details for logging and tracking
+   *
+   * @example
+   * const result = await getRawHeader('0x160c', requestDetails);
+   */
+  @rpcMethod
+  @rpcParamValidationRules({
+    0: { type: ['blockNumber', 'blockHash'], required: true },
+  })
+  @cache({
+    skipParams: [{ index: '0', value: constants.NON_CACHABLE_BLOCK_PARAMS }],
+  })
+  async getRawHeader(blockNrOrHash: string, requestDetails: RequestDetails): Promise<string | JsonRpcError> {
+    DebugImpl.requireDebugAPIEnabled();
+
+    const block: Block | null =
+      blockNrOrHash.length === 66
+        ? await this.blockService.getBlockByHash(blockNrOrHash, false, requestDetails)
+        : await this.blockService.getBlockByNumber(blockNrOrHash, false, requestDetails);
+
+    if (!block) {
+      return constants.EMPTY_HEX;
+    }
+
+    return prepend0x(toHexString(BlockFactory.rlpEncodeBlockHeader(block)));
   }
 
   /**
@@ -296,6 +339,34 @@ export class DebugImpl implements Debug {
   async getBadBlocks(): Promise<[]> {
     DebugImpl.requireDebugAPIEnabled();
     return [];
+  }
+
+  /**
+   * Returns an array of EIP-2718 binary-encoded receipts.
+   *
+   * @async
+   * @rpcMethod Exposed as debug_getRawReceipts RPC endpoint
+   * @rpcParamValidationRules Applies JSON-RPC parameter validation according to the API specification
+   *
+   * @param {string} blockHashOrNumber - The block hash or block number.
+   * @param {RequestDetails} requestDetails - The request details for logging and tracking.
+   * @throws {Error} Throws an error if the debug API is not enabled or if an exception occurs.
+   * @returns {Promise<string[]>} A Promise that resolves to an array of EIP-2718 binary-encoded receipts or empty array if block not found.
+   *
+   * @example
+   * const result = await getRawReceipts('0x1234', requestDetails);
+   * // result: ["0xe6808...", "0xe6809..."]
+   */
+  @rpcMethod
+  @rpcParamValidationRules({
+    0: { type: ['blockNumber', 'blockHash'], required: true },
+  })
+  @cache({
+    skipParams: [{ index: '0', value: constants.NON_CACHABLE_BLOCK_PARAMS }],
+  })
+  async getRawReceipts(blockHashOrNumber: string, requestDetails: RequestDetails): Promise<string[]> {
+    DebugImpl.requireDebugAPIEnabled();
+    return await this.blockService.getRawReceipts(blockHashOrNumber, requestDetails);
   }
 
   /**
