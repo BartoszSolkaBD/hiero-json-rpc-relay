@@ -10,6 +10,7 @@ import https from 'https';
 import JSONBigInt from 'json-bigint';
 import { Logger } from 'pino';
 import { Counter, Histogram, Registry } from 'prom-client';
+import { isMainThread } from 'worker_threads';
 
 import { formatTransactionId } from '../../formatters';
 import { predefined } from '../errors/JsonRpcError';
@@ -303,11 +304,13 @@ export class MirrorNodeClient {
       registers: [register],
     });
 
-    this.logger.info(
-      `Mirror Node client successfully configured to REST url: %s and Web3 url: %s `,
-      this.restUrl,
-      this.web3Url,
-    );
+    if (isMainThread) {
+      this.logger.info(
+        `Mirror Node client successfully configured to REST url: %s and Web3 url: %s `,
+        this.restUrl,
+        this.web3Url,
+      );
+    }
     this.cacheService = cacheService;
 
     // set  up eth call  accepted error codes.
@@ -614,14 +617,14 @@ export class MirrorNodeClient {
 
   /**
    * To be used to make paginated calls for the account information when the
-   * transaction count exceeds the constant `MIRROR_NODE_QUERY_LIMIT`.
+   * transaction count exceeds the constant `MIRROR_NODE_LIMIT_PARAM`.
    */
   public async getAccountPaginated(url: string, requestDetails: RequestDetails) {
     const queryParamObject = {};
     const accountId = this.extractAccountIdFromUrl(url);
     const params = new URLSearchParams(url.split('?')[1]);
 
-    this.setQueryParam(queryParamObject, 'limit', constants.MIRROR_NODE_QUERY_LIMIT);
+    this.setQueryParam(queryParamObject, 'limit', ConfigService.get('MIRROR_NODE_LIMIT_PARAM'));
     this.setQueryParam(queryParamObject, 'timestamp', params.get('timestamp'));
     const queryParams = this.getQueryParams(queryParamObject);
 
@@ -1343,7 +1346,7 @@ export class MirrorNodeClient {
 
   public async getContractState(address: string, requestDetails: RequestDetails, timestamp?: string) {
     const limitOrderParams: ILimitOrderParams = this.getLimitOrderQueryParam(
-      constants.MIRROR_NODE_QUERY_LIMIT,
+      ConfigService.get('MIRROR_NODE_LIMIT_PARAM'),
       constants.ORDER.DESC,
     );
     const queryParamObject = {};
@@ -1371,7 +1374,7 @@ export class MirrorNodeClient {
     blockEndTimestamp?: string,
   ) {
     const limitOrderParams: ILimitOrderParams = this.getLimitOrderQueryParam(
-      constants.MIRROR_NODE_QUERY_LIMIT,
+      ConfigService.get('MIRROR_NODE_LIMIT_PARAM'),
       constants.ORDER.DESC,
     );
     const queryParamObject = {};
